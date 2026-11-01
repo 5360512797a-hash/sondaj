@@ -41,6 +41,7 @@ header{background:var(--readout);color:#E4E9EC;position:sticky;top:0;z-index:5;
 .well .lbl{font:600 .68rem var(--f-body);letter-spacing:.1em;text-transform:uppercase;color:#93A1AB}
 .well b{display:block;font:700 1.3rem var(--f-display);letter-spacing:.02em;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .well b span{color:var(--readout-ink)}
+.units{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
 .seg{display:inline-flex;border:1px solid #3A4852;border-radius:6px;overflow:hidden;flex:0 0 auto}
 .seg button{background:transparent;color:#C9D2D8;border:0;padding:6px 12px;font:600 .85rem var(--f-body);cursor:pointer}
 .seg button[aria-pressed="true"]{background:var(--readout-ink);color:#1E2A33}
@@ -108,6 +109,8 @@ table.t td{padding:6px 8px;border-bottom:1px solid var(--line);white-space:nowra
 table.t td.n,table.t th.n{text-align:right;font-family:var(--f-num)}
 table.t tr:last-child td{border-bottom:0}
 table.t td input{padding:5px 6px;font-size:15px;min-width:80px}
+table.t td select{padding:5px 6px;font-size:15px;min-width:104px}
+#tankEdit td:first-child input{min-width:120px}
 table.t td.c-ok{background:var(--ok-bg);color:var(--ok)} table.t td.c-lo{background:var(--lo-bg);color:var(--lo)} table.t td.c-hi{background:var(--hi-bg);color:var(--hi)}
 table.t tr.flag td{background:var(--hi-bg)}
 table.sch{width:100%;border-collapse:collapse;font:500 .9rem var(--f-num);font-variant-numeric:tabular-nums}
@@ -153,9 +156,14 @@ footer{color:var(--muted);font-size:.8rem;margin-top:22px;max-width:70ch}
 <header>
   <div class="top">
     <div class="well"><span class="lbl">Aktif kuyu</span><b id="hdrWell">—</b></div>
-    <span class="seg" role="group" aria-label="Uzunluk birimi">
-      <button id="u-ft" aria-pressed="true">ft</button><button id="u-m" aria-pressed="false">m</button>
-    </span>
+    <div class="units">
+      <span class="seg" role="group" aria-label="Yoğunluk birimi">
+        <button id="d-ppg" aria-pressed="true">ppg</button><button id="d-pcf" aria-pressed="false">lb/ft³</button>
+      </span>
+      <span class="seg" role="group" aria-label="Uzunluk birimi">
+        <button id="u-ft" aria-pressed="true">ft</button><button id="u-m" aria-pressed="false">m</button>
+      </span>
+    </div>
   </div>
   <nav id="sub" role="tablist" aria-label="Modüller"></nav>
 </header>
@@ -300,15 +308,16 @@ footer{color:var(--muted);font-size:.8rem;margin-top:22px;max-width:70ch}
     <div class="tank-svg" id="tankSvg"></div>
     <div class="legend">
       <span><i style="background:var(--u-active)"></i>Aktif</span><span><i style="background:var(--u-reserve)"></i>Rezerv</span>
-      <span><i style="background:var(--u-trip)"></i>Trip</span><span><i style="background:var(--u-settle)"></i>Çökeltme / kum</span><span><i style="background:var(--u-other)"></i>Diğer</span>
+      <span><i style="background:var(--u-trip)"></i>Trip</span><span><i style="background:var(--u-settle)"></i>Çökeltme / kum</span><span><i style="background:var(--u-other)"></i>Diğer / su</span><span>Kesikli çizgi: emiş seviyesi</span>
     </div>
     <div class="totals" id="tankTotals"></div>
   </div>
   <div class="card">
     <h2>Tanklar ve bölmeler</h2>
-    <p class="hint">Her tank için bölmeleri gir. Ölçüler ve seviye seçili uzunluk biriminde (<span class="lu2">ft</span>). Seviyeyi her vardiya güncelle; hacimler ve aktif sistem toplamı kendiliğinden hesaplanır.</p>
+    <p class="hint">Seviyeyi <b>cm</b> olarak gir. <b>Emiş</b> sütunu pompanın çekemediği alt seviyedir (MR 8000'de 30 cm); "Emiş üstü" o seviyenin üstündeki kullanılabilir hacimdir. cm → varil katsayılarını <b>Seviye (cm)</b> sekmesindeki <b>Ayar</b> düğmesinden değiştirebilirsin. Boy/en/yükseklik yalnızca "ölçülerden" yönteminde kullanılır.</p>
     <div class="secs" id="tankEdit"></div>
-    <div class="btns"><button class="btn" id="addTank">+ Tank ekle</button></div>
+    <div class="btns"><button class="btn" id="addTank">+ Tank ekle</button><button class="btn sec" id="loadMR">MR 8000 tank setini yükle</button></div>
+    <p class="note">MR 8000 seti: Elek, Çökelme, Emiş-1, Emiş-2, Hopper, Rezerv-1, Rezerv-2 ve iki su tankı. Eğimli tabanlı bölmeler 0–80, 80–115 ve 115–225 cm arası ayrı katsayıyla hesaplanır.</p>
   </div>
 </section>
 
@@ -321,6 +330,20 @@ footer{color:var(--muted);font-size:.8rem;margin-top:22px;max-width:70ch}
     <p class="note" id="lvLast"></p>
   </div>
   <div id="lvTanks" class="secs"></div>
+  <div class="card">
+    <h2>Günlük hacim dengesi</h2>
+    <p class="hint">Raporun "Çamur hacim bilgisi" bölümü. Son toplam = aktif + rezerv tanklar + kuyu içi (dizi içi + anülüs). Başlangıç, bir önceki kayıttaki son toplamdan otomatik gelir; değiştirebilirsin. Fark 0'a yakın olmalı.</p>
+    <div class="grid" id="balIn">
+      <label>Başlangıç toplamı <small>(bbl)</small><input id="bal-start" data-bk="start" type="text" inputmode="decimal"></label>
+      <label>Hazırlanan <small>(bbl)</small><input id="bal-built" data-bk="built" type="text" inputmode="decimal" value="0"></label>
+      <label>Yüzey kaybı <small>(bbl)</small><input id="bal-surf" data-bk="surf" type="text" inputmode="decimal" value="0"></label>
+      <label>Atılan <small>(bbl)</small><input id="bal-dump" data-bk="dump" type="text" inputmode="decimal" value="0"></label>
+      <label>Kaçak <small>(bbl, kuyu içi)</small><input id="bal-dh" data-bk="dh" type="text" inputmode="decimal" value="0"></label>
+    </div>
+    <div class="totals" id="balOut"></div>
+    <div class="btns"><button class="btn" id="balSave">Günü kaydet</button></div>
+    <div class="tw" style="max-height:300px;overflow:auto;margin-top:12px"><table class="t" id="balHist"></table></div>
+  </div>
   <div class="card">
     <h2>Seviye ölçüm geçmişi</h2>
     <p class="hint">Kaydedilen her ölçüm, bir öncekine göre aktif sistemdeki değişimi gösterir. Bu fark kayıp veya kazancı takip etmene yarar.</p>
@@ -372,24 +395,32 @@ footer{color:var(--muted);font-size:.8rem;margin-top:22px;max-width:70ch}
 <section class="tool" id="t-agir" hidden>
   <div class="card">
     <h2>Çamur ağırlaştırma</h2>
-    <p class="hint">Mevcut çamuru hedef yoğunluğa çıkarmak için gereken ağırlaştırıcı ve hacim artışı.</p>
+    <p class="hint">Barit veya kalsiyum karbonat (CaCO₃) ile üç hesap: hedef yoğunluğa çıkarmak için ne kadar malzeme gerektiği, elindeki big bag'lerin çamuru ne kadar ağırlaştıracağı ve bu malzemeyle hedef ağırlıkta kaç varil çamur hazırlanabileceği.</p>
     <div class="grid">
-      <label>Mevcut hacim <small>(bbl)</small><input id="a-v" type="text" inputmode="decimal" value="800"></label>
-      <label>Mevcut yoğunluk <small>(ppg)</small><input id="a-w1" type="text" inputmode="decimal" value="10.2"></label>
-      <label>Hedef yoğunluk <small>(ppg)</small><input id="a-w2" type="text" inputmode="decimal" value="11.0"></label>
-      <label>Ağırlaştırıcı<select id="a-mat">
-        <option value="4.2">Barit (SG 4.20)</option>
-        <option value="4.1">Barit API (SG 4.10)</option>
-        <option value="2.7">Kalsit CaCO₃ (SG 2.70)</option>
-        <option value="5.0">Hematit (SG 5.00)</option>
+      <label style="grid-column:1/-1">Hesap<select id="a-mode">
+        <option value="target">Hedef yoğunluğa çıkar · ne kadar malzeme?</option>
+        <option value="bags">Elimdeki malzeme ne kadar ağırlaştırır?</option>
+        <option value="prep">Bu malzemeyle hedef ağırlıkta kaç bbl çamur hazırlanır?</option>
       </select></label>
-      <label>Torba ağırlığı <small>(kg)</small><input id="a-sack" type="text" inputmode="decimal" value="50"></label>
+      <label>Ağırlaştırıcı<select id="a-mat">
+        <option value="35">Barit (35 ppg · SG 4,2)</option>
+        <option value="22.5">Kalsiyum karbonat CaCO₃ (22,5 ppg · SG 2,7)</option>
+        <option value="34.2">Barit API (SG 4,1)</option>
+        <option value="41.7">Hematit (SG 5,0)</option>
+      </select></label>
+      <label>Ambalaj ağırlığı <small>(kg · big bag)</small><input id="a-sack" type="text" inputmode="decimal" value="1500"></label>
+      <label data-am="target bags prep">Çamur hacmi <small id="a-vlbl">(bbl)</small><input id="a-v" type="text" inputmode="decimal" value="800"></label>
+      <label>Mevcut yoğunluk <small class="du">(ppg)</small><input id="a-w1" type="text" inputmode="decimal" value="8.42"></label>
+      <label data-am="target prep">Hedef yoğunluk <small class="du">(ppg)</small><input id="a-w2" type="text" inputmode="decimal" value="8.96"></label>
+      <label data-am="bags prep">Ambalaj adedi<input id="a-n" type="text" inputmode="decimal" value="1"></label>
       <label>Stok kalemi<select id="a-stock"></select></label>
     </div>
     <div class="btns"><button class="btn" id="a-use">Stoktan düş</button></div>
     <div class="formula">
-      <div>Ağırlaştırıcı (lb/bbl) = 350·SG·(W2 − W1) / (8.33·SG − W2)</div>
-      <div>Hacim artışı (bbl) = lb / (350·SG)</div>
+      <div>Malzeme (lb) = V · 42·Dm · (W2 − W1) / (Dm − W2) · Barit: 42·35 = 1470, CaCO₃: 42·22,5 = 945</div>
+      <div>Yeni yoğunluk W2 = (Dm·M + 42·Dm·W1·V) / (42·Dm·V + M)</div>
+      <div>Hazırlanacak çamur V = M · (Dm − W2) / (42·Dm · (W2 − W1))</div>
+      <div>Hacim artışı (bbl) = M / (42·Dm) · Yoğunluklar ppg; 1 ppg = 7,48 lb/ft³</div>
     </div>
   </div>
   <div class="readout" id="r-agir"></div>
@@ -397,15 +428,16 @@ footer{color:var(--muted);font-size:.8rem;margin-top:22px;max-width:70ch}
 
 <section class="tool" id="t-seyr" hidden>
   <div class="card">
-    <h2>Seyreltme</h2>
-    <p class="hint">Yoğunluğu düşürmek için eklenecek sıvı hacmi. Baz yağ için sıvı yoğunluğunu değiştir (dizel ≈ 7.0 ppg).</p>
+    <h2>Yoğunluk düşürme</h2>
+    <p class="hint">Çamur ağırlığını su veya petrol (dizel) ekleyerek düşürmek için gereken sıvı hacmi.</p>
     <div class="grid">
-      <label>Mevcut hacim <small>(bbl)</small><input id="s-v" type="text" inputmode="decimal" value="600"></label>
-      <label>Mevcut yoğunluk <small>(ppg)</small><input id="s-w1" type="text" inputmode="decimal" value="12.0"></label>
-      <label>Hedef yoğunluk <small>(ppg)</small><input id="s-w2" type="text" inputmode="decimal" value="11.2"></label>
-      <label>Eklenecek sıvı <small>(ppg)</small><input id="s-dw" type="text" inputmode="decimal" value="8.33"></label>
+      <label>Eklenecek sıvı<select id="s-liq"><option value="8.33">Su (8,33 ppg)</option><option value="7">Petrol / dizel (7,0 ppg)</option><option value="">Diğer (elle gir)</option></select></label>
+      <label>Sıvı yoğunluğu <small class="du">(ppg)</small><input id="s-dw" type="text" inputmode="decimal" value="8.33"></label>
+      <label>Mevcut hacim <small>(bbl)</small><input id="s-v" type="text" inputmode="decimal" value="300"></label>
+      <label>Mevcut yoğunluk <small class="du">(ppg)</small><input id="s-w1" type="text" inputmode="decimal" value="10.56"></label>
+      <label>Hedef yoğunluk <small class="du">(ppg)</small><input id="s-w2" type="text" inputmode="decimal" value="9.49"></label>
     </div>
-    <div class="formula"><div>Vsıvı = V1·(W1 − W2) / (W2 − Dsıvı)</div></div>
+    <div class="formula"><div>Vsıvı = V1 · (W1 − W2) / (W2 − Dsıvı)</div><div>Kontrol: (W1·V1 + Dsıvı·Vsıvı) / (V1 + Vsıvı) = W2</div></div>
   </div>
   <div class="readout" id="r-seyr"></div>
 </section>
@@ -440,7 +472,7 @@ footer{color:var(--muted);font-size:.8rem;margin-top:22px;max-width:70ch}
     <h2>Hidrostatik basınç ve ECD</h2>
     <p class="hint">Derinlik gerçek düşey derinliktir (TVD).</p>
     <div class="grid">
-      <label>Çamur ağırlığı <small>(ppg)</small><input id="p-mw" type="text" inputmode="decimal" value="10.5"></label>
+      <label>Çamur ağırlığı <small class="du">(ppg)</small><input id="p-mw" type="text" inputmode="decimal" value="10.5"></label>
       <label>TVD <small class="lu">(ft)</small><input id="p-tvd" type="text" inputmode="decimal" value="9500"></label>
       <label>Anülüs basınç kaybı <small>(psi)</small><input id="p-apl" type="text" inputmode="decimal" value="250"></label>
       <label>Gözenek basıncı <small>(psi)</small><input id="p-pp" type="text" inputmode="decimal" value="4600"></label>
@@ -457,16 +489,16 @@ footer{color:var(--muted);font-size:.8rem;margin-top:22px;max-width:70ch}
     <h2>Kill sheet</h2>
     <p class="hint">Dizi hacmi Kuyu Hacmi'nden, pompa çıkışı Dolaşım sekmesinden gelir. SCR, yavaş pompa hızındaki dolaşım basıncıdır.</p>
     <div class="grid">
-      <label>Mevcut çamur <small>(ppg)</small><input id="w-omw" type="text" inputmode="decimal" value="10.5"></label>
+      <label>Mevcut çamur <small class="du">(ppg)</small><input id="w-omw" type="text" inputmode="decimal" value="10.5"></label>
       <label>Kuyu TVD <small class="lu">(ft)</small><input id="w-tvd" type="text" inputmode="decimal" value="9500"></label>
       <label>SIDPP <small>(psi)</small><input id="w-sidpp" type="text" inputmode="decimal" value="400"></label>
       <label>SICP <small>(psi)</small><input id="w-sicp" type="text" inputmode="decimal" value="600"></label>
       <label>Pit kazancı <small>(bbl)</small><input id="w-pit" type="text" inputmode="decimal" value="15"></label>
       <label>SCR basıncı <small>(psi)</small><input id="w-scr" type="text" inputmode="decimal" value="450"></label>
       <label>Kill hızı <small>(SPM)</small><input id="w-spm" type="text" inputmode="decimal" value="30"></label>
-      <label>Emniyet payı <small>(ppg)</small><input id="w-sm" type="text" inputmode="decimal" value="0"></label>
+      <label>Emniyet payı <small class="du">(ppg)</small><input id="w-sm" type="text" inputmode="decimal" value="0"></label>
       <label>Pabuç TVD <small class="lu">(ft)</small><input id="w-shoe" type="text" inputmode="decimal" value="6000"></label>
-      <label>LOT / FIT <small>(EMW ppg)</small><input id="w-lot" type="text" inputmode="decimal" value="14.5"></label>
+      <label>LOT / FIT EMW <small class="du">(ppg)</small><input id="w-lot" type="text" inputmode="decimal" value="14.5"></label>
     </div>
     <div class="formula">
       <div>KMW = OMW + SIDPP / (0.052 × TVD) · ICP = SIDPP + SCR · FCP = SCR × KMW / OMW</div>
@@ -493,8 +525,8 @@ footer{color:var(--muted);font-size:.8rem;margin-top:22px;max-width:70ch}
       <label>Verim (yield) <small>(ft³/torba)</small><input id="c-y" type="text" inputmode="decimal" value="1.15"></label>
       <label>Karışım suyu <small>(gal/torba)</small><input id="c-w" type="text" inputmode="decimal" value="5.0"></label>
       <label>Torba ağırlığı <small>(lb)</small><input id="c-sk" type="text" inputmode="decimal" value="94"></label>
-      <label>Bulamaç yoğunluğu <small>(ppg)</small><input id="c-dens" type="text" inputmode="decimal" value="15.8"></label>
-      <label>Deplasman çamuru <small>(ppg)</small><input id="c-dmw" type="text" inputmode="decimal" value="10.5"></label>
+      <label>Bulamaç yoğunluğu <small class="du">(ppg)</small><input id="c-dens" type="text" inputmode="decimal" value="15.8"></label>
+      <label>Deplasman çamuru <small class="du">(ppg)</small><input id="c-dmw" type="text" inputmode="decimal" value="10.5"></label>
     </div>
   </div>
   <div class="readout" id="r-cim"></div>
@@ -503,24 +535,84 @@ footer{color:var(--muted);font-size:.8rem;margin-top:22px;max-width:70ch}
 <section class="tool" id="t-hidr" hidden>
   <div class="card">
     <h2>Reoloji ve bit hidroliği</h2>
-    <p class="hint">Debi boş bırakılırsa Dolaşım sekmesindeki değer kullanılır.</p>
+    <p class="hint">Günlük çamur raporundaki yöntem (MI el kitabı, power-law). Dizi ve anülüs geometrisi <b>Kuyu Hacmi</b> bölümlerinden alınır. Debi boş bırakılırsa Dolaşım sekmesindeki değer kullanılır. Sirkülasyon basıncı girilirse hesaplanan kayıplarla karşılaştırılır; aradaki fark motor, MWD gibi hesaba girmeyen kayıplardır.</p>
+    <h4 style="margin-top:0">Çamur</h4>
+    <div class="grid tight">
+      <label>θ600<input id="r-600" type="text" inputmode="decimal" value="57"></label>
+      <label>θ300<input id="r-300" type="text" inputmode="decimal" value="37"></label>
+      <label>θ100<input id="r-100" type="text" inputmode="decimal" value="20"></label>
+      <label>θ3<input id="r-3" type="text" inputmode="decimal" value="3"></label>
+      <label>Çamur ağırlığı <small class="du">(ppg)</small><input id="r-mw" type="text" inputmode="decimal" value="10.7"></label>
+    </div>
+    <h4>Pompa ve matkap</h4>
     <div class="grid">
-      <label>θ600<input id="r-600" type="text" inputmode="decimal" value="52"></label>
-      <label>θ300<input id="r-300" type="text" inputmode="decimal" value="32"></label>
-      <label>Çamur ağırlığı <small>(ppg)</small><input id="r-mw" type="text" inputmode="decimal" value="10.5"></label>
       <label>Debi <small>(gpm)</small><input id="r-q" type="text" inputmode="decimal" placeholder="pompadan"></label>
-      <label>Nozzle adet A<input id="n1c" type="text" inputmode="numeric" value="3"></label>
-      <label>Boyut A <small>(1/32")</small><input id="n1s" type="text" inputmode="numeric" value="12"></label>
-      <label>Nozzle adet B<input id="n2c" type="text" inputmode="numeric" value="2"></label>
-      <label>Boyut B <small>(1/32")</small><input id="n2s" type="text" inputmode="numeric" value="11"></label>
-      <label>Kuyu çapı <small>(in)</small><input id="r-dh" type="text" inputmode="decimal" value="8.5"></label>
-      <label>Boru OD <small>(in)</small><input id="r-od" type="text" inputmode="decimal" value="5"></label>
+      <label>Sirkülasyon basıncı <small>(psi)</small><input id="r-spp" type="text" inputmode="decimal" value="2400"></label>
+      <label>Matkap çapı <small>(in)</small><input id="r-bit" type="text" inputmode="decimal" value="17.5"></label>
+      <label>Nozzle adet A<input id="n1c" type="text" inputmode="numeric" value="9"></label>
+      <label>Boyut A <small>(1/32")</small><input id="n1s" type="text" inputmode="numeric" value="13"></label>
+      <label>Nozzle adet B<input id="n2c" type="text" inputmode="numeric" value="0"></label>
+      <label>Boyut B <small>(1/32")</small><input id="n2s" type="text" inputmode="numeric" value="0"></label>
+      <label>Yüzey ekipmanı<select id="r-surf">
+        <option value="0">Hesaba katma</option>
+        <option value="2600">Tip 1 (2600 ft eşdeğer)</option>
+        <option value="946">Tip 2 (946 ft eşdeğer)</option>
+        <option value="610" selected>Tip 3 (610 ft eşdeğer)</option>
+        <option value="424">Tip 4 (424 ft eşdeğer)</option>
+      </select></label>
+    </div>
+    <h4>Kesinti taşıma</h4>
+    <div class="grid">
+      <label>Kesinti çapı <small>(in)</small><input id="r-dc" type="text" inputmode="decimal" value="0.25"></label>
+      <label>Kesinti özgül ağırlığı<input id="r-sgc" type="text" inputmode="decimal" value="2.7"></label>
     </div>
     <div class="formula">
-      <div>PV = θ600 − θ300 · YP = θ300 − PV · ΔPbit = MW·Q² / (12031·TFA²)</div>
+      <div>PV = θ600 − θ300 · YP = θ300 − PV · n = 3,32·log(θ600/θ300) · K = 5,11·θ300 / 511ⁿ</div>
+      <div>ΔPbit = MW·Q² / (10858·TFA²) · Vnozzle = Q / (3,117·TFA) · Darbe = Vn·Q·MW / 1932</div>
+      <div>Dizi içi: V = 24,48·Q/ID² · Re = 15,467·V·ID·MW/μe · ΔP = f·V²·MW·L / (92916·ID)</div>
+      <div>Anülüs (θ100, θ3 ile): Va = 24,48·Q/(Dh² − Dp²) · ΔPa = f·Va²·MW·L / (92916·(Dh − Dp)) · ECD = MW + ΔPa / (0,052·derinlik)</div>
+      <div>Kayma hızı = 175·dc·(8,34·SGc − MW)^⅔ / (MW·μa)^⅓ · CCI = K·AVmin·MW / 400000</div>
     </div>
   </div>
   <div class="readout" id="r-hidr"></div>
+</section>
+
+<section class="tool" id="t-kati" hidden>
+  <div class="card">
+    <h2>Katı analizi</h2>
+    <p class="hint">Retort ve filtrat analizinden tuz düzeltmeli katı dağılımı (günlük rapordaki yöntem). Değerleri son ölçümden çekebilir veya elle girebilirsin.</p>
+    <div class="btns" style="margin:0 0 12px"><button class="btn sec" id="k-fill">Son ölçümden doldur</button></div>
+    <div class="grid tight">
+      <label>Çamur ağırlığı <small class="du">(ppg)</small><input id="k-mw" type="text" inputmode="decimal" value="10.7"></label>
+      <label>Su <small>(% hacim)</small><input id="k-water" type="text" inputmode="decimal" value="88"></label>
+      <label>Petrol <small>(% hacim)</small><input id="k-oil" type="text" inputmode="decimal" value="1"></label>
+      <label>Glikol + lube <small>(% hacim)</small><input id="k-gly" type="text" inputmode="decimal" value="0"></label>
+      <label>KCl <small>(% ağırlık)</small><input id="k-kcl" type="text" inputmode="decimal" value="7"></label>
+      <label>Klorür <small>(mg/L)</small><input id="k-cl" type="text" inputmode="decimal" value="70000"></label>
+      <label>Kalsiyum <small>(mg/L)</small><input id="k-ca" type="text" inputmode="decimal" value="160"></label>
+      <label>Toplam sertlik <small>(mg/L)</small><input id="k-th" type="text" inputmode="decimal" value="200"></label>
+      <label>MBT <small>(ppb)</small><input id="k-mbt" type="text" inputmode="decimal" value="12.5"></label>
+      <label>Pf <small>(ml)</small><input id="k-pf" type="text" inputmode="decimal" value="0.1"></label>
+      <label>Pm <small>(ml)</small><input id="k-pm" type="text" inputmode="decimal" value="2"></label>
+    </div>
+    <h4>Sabitler</h4>
+    <div class="grid tight">
+      <label>Ağır katı SG<input id="k-hgs" type="text" inputmode="decimal" value="4.3"></label>
+      <label>Hafif katı SG<input id="k-lgs" type="text" inputmode="decimal" value="2.7"></label>
+      <label>Petrol SG<input id="k-sgo" type="text" inputmode="decimal" value="0.92"></label>
+      <label>Glikol SG<input id="k-sgg" type="text" inputmode="decimal" value="1.09"></label>
+      <label>Bentonit CEC<input id="k-bcec" type="text" inputmode="decimal" value="60"></label>
+      <label>Kesinti CEC<input id="k-dcec" type="text" inputmode="decimal" value="6"></label>
+    </div>
+    <div class="formula">
+      <div>Filtrat yoğunluğu = 1 + (6,45·NaCl + 5,845·KCl + 7,6·CaCl₂ + 7,5·MgCl₂)·10⁻⁷</div>
+      <div>Düzeltilmiş su = VIF × Su% · Düzeltilmiş katı = 100 − Petrol − Glikol − Düz. su</div>
+      <div>Hafif katı % = (100·ρf + (ρHGS − ρf)·Vs − 12·MW − (ρf − ρoil)·Vo − (ρf − ρgly)·Vg) / (ρHGS − ρLGS)</div>
+      <div>Bentonit % = LGS · (CECort − CECkesinti) / (CECbent − CECkesinti) · CECort = 7,69·MBT / LGS%</div>
+      <div>Depo kireç (ppb) = 0,26 · (Pm − Fw·Pf) · Mg = (Toplam sertlik − Ca) · 243 / 400</div>
+    </div>
+  </div>
+  <div class="readout" id="r-kati"></div>
 </section>
 
 <section class="tool" id="t-trip" hidden>
@@ -532,7 +624,7 @@ footer{color:var(--muted);font-size:.8rem;margin-top:22px;max-width:70ch}
       <label>Muhafaza ID <small>(in)</small><input id="t-cas" type="text" inputmode="decimal" value="8.681"></label>
       <label>Stand boyu <small class="lu">(ft)</small><input id="t-sl" type="text" inputmode="decimal" value="93"></label>
       <label>Çekilen stand<input id="t-n" type="text" inputmode="numeric" value="5"></label>
-      <label>Çamur ağırlığı <small>(ppg)</small><input id="t-mw" type="text" inputmode="decimal" value="10.5"></label>
+      <label>Çamur ağırlığı <small class="du">(ppg)</small><input id="t-mw" type="text" inputmode="decimal" value="10.5"></label>
       <label>DP ağırlık <small>(lb/ft)</small><input id="t-wdp" type="text" inputmode="decimal" value="21.9"></label>
       <label>DP uzunluğu <small class="lu">(ft)</small><input id="t-ldp" type="text" inputmode="decimal" value="8700"></label>
       <label>DC ağırlık <small>(lb/ft)</small><input id="t-wdc" type="text" inputmode="decimal" value="91"></label>
@@ -548,7 +640,7 @@ footer{color:var(--muted);font-size:.8rem;margin-top:22px;max-width:70ch}
   <div class="readout" id="r-trip"></div>
 </section>
 
-<footer>Petrol sahası birimleri: bbl, ppg, psi, inç. Sonuçlar standart formüllerle hesaplanır; kritik operasyonlarda şirket prosedürü ile doğrula. Veriler bu cihazda saklanır, uygulama internetsiz çalışır.</footer>
+<footer>Petrol sahası birimleri: bbl, ppg veya lb/ft³ (1 ppg = 7,48 lb/ft³), psi, inç. Sonuçlar standart formüllerle hesaplanır; kritik operasyonlarda şirket prosedürü ile doğrula. Veriler bu cihazda saklanır, uygulama internetsiz çalışır.</footer>
 </main>
 
 <nav id="bar" role="tablist" aria-label="Bölümler">

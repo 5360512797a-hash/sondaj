@@ -27,45 +27,76 @@ const unit = () => DB.unit || 'ft';
 const toFt = x => unit() === 'm' ? x * M_FT : x;
 const fromFt = x => unit() === 'm' ? x / M_FT : x;
 const tankBbl = ft3 => ft3 / FT3_BBL;
+/* yoğunluk: içeride her zaman ppg; ekranda ppg veya lb/ft³ (pcf). 1 ppg = 7.48 pcf */
+const PCF = 7.48;
+const dunit = () => (DB && DB.dunit) || 'ppg';
+const isPcf = () => dunit() === 'pcf';
+const toPpg = x => isPcf() ? x / PCF : x;
+const fromPpg = x => isPcf() ? x * PCF : x;
+const dLbl = () => isPcf() ? 'lb/ft³' : 'ppg';
+const fd = (ppg, d) => f(fromPpg(ppg), d != null ? d : (isPcf() ? 1 : 2));
+const nd = id => toPpg(n(id));
 
 /* ---------------- çamur özellikleri ---------------- */
 const PROPS = [
-  { k: 'mw', n: 'Yoğunluk', u: 'ppg', d: 2, lo: 10, hi: 10.8 },
+  { k: 'mw', n: 'Yoğunluk', u: 'ppg', d: 2, lo: 10, hi: 10.8, dens: true },
   { k: 'fv', n: 'Huni viskozitesi', u: 'sn/qt', d: 0, lo: 40, hi: 55 },
   { k: 'pv', n: 'PV', u: 'cP', d: 0, lo: 10, hi: 22 },
   { k: 'yp', n: 'YP', u: 'lb/100ft²', d: 0, lo: 10, hi: 20 },
+  { k: 'r6', n: 'θ6', u: '', d: 0, lo: null, hi: null },
+  { k: 'r3', n: 'θ3', u: '', d: 0, lo: null, hi: null },
   { k: 'g10s', n: 'Jel 10 sn', u: 'lb/100ft²', d: 0, lo: 2, hi: 6 },
   { k: 'g10m', n: 'Jel 10 dk', u: 'lb/100ft²', d: 0, lo: 5, hi: 15 },
+  { k: 'g30m', n: 'Jel 30 dk', u: 'lb/100ft²', d: 0, lo: null, hi: null },
   { k: 'ph', n: 'pH', u: '', d: 1, lo: 9, hi: 10.5 },
   { k: 'fl', n: 'API filtrat', u: 'ml/30dk', d: 1, lo: null, hi: 6 },
   { k: 'cake', n: 'Kek', u: '1/32 in', d: 0, lo: null, hi: 2 },
+  { k: 'hpht', n: 'HPHT filtrat', u: 'ml/30dk', d: 1, lo: null, hi: null },
+  { k: 'water', n: 'Su (retort)', u: '%', d: 1, lo: null, hi: null },
+  { k: 'oil', n: 'Petrol (retort)', u: '%', d: 1, lo: null, hi: null },
   { k: 'sol', n: 'Katı', u: '%', d: 1, lo: null, hi: 10 },
   { k: 'sand', n: 'Kum', u: '%', d: 2, lo: null, hi: 0.5 },
   { k: 'mbt', n: 'MBT', u: 'ppb', d: 1, lo: null, hi: 20 },
   { k: 'cl', n: 'Klorür', u: 'mg/L', d: 0, lo: null, hi: null },
+  { k: 'th', n: 'Toplam sertlik', u: 'mg/L', d: 0, lo: null, hi: null },
   { k: 'ca', n: 'Kalsiyum', u: 'mg/L', d: 0, lo: null, hi: 200 },
+  { k: 'kcl', n: 'KCl', u: '% ağ.', d: 1, lo: null, hi: null },
   { k: 'pf', n: 'Pf', u: 'ml', d: 2, lo: null, hi: null },
   { k: 'mf', n: 'Mf', u: 'ml', d: 2, lo: null, hi: null },
+  { k: 'pm', n: 'Pm', u: 'ml', d: 2, lo: null, hi: null },
   { k: 'temp', n: 'Sıcaklık', u: '°C', d: 0, lo: null, hi: null }
 ];
 const defaultTargets = () => Object.fromEntries(PROPS.map(p => [p.k, { lo: p.lo, hi: p.hi }]));
+/* yoğunluk özelliği içeride ppg; ekranda seçili birim */
+const pU = p => p.dens ? dLbl() : p.u;
+const pD = p => p.dens ? (isPcf() ? 1 : 2) : p.d;
+const pOut = (p, v) => p.dens && v != null && v !== '' && isFinite(v) ? fromPpg(+v) : v;
+const pIn = (p, v) => p.dens && isFinite(v) ? toPpg(v) : v;
 
 /* ---------------- veri modeli ---------------- */
-function sampleTanks() {
+/* MR 8000 kulesi tank seti ("MR 8000 Tank Hacimleri" Excel dosyası).
+   Tank yüksekliği 225 cm, eni 2,45 m. Eğimli tabanlı bölmeler kademeli katsayıyla:
+   0–80 cm · 80–115 cm · 115–225 cm arası bbl/cm. Emiş seviyesi 30 cm (altı pompalanamaz). */
+const M2FT = m => m * M_FT;
+function mrComp(name, use, lenM, f1, f2, f3) {
+  return { name, use, shape: 'rect', L: M2FT(lenM || 0), W: M2FT(2.45), H: 225 / CM_FT, method: f2 ? 'step' : 'factor',
+    factor: f1, f1, f2: f2 || '', f3: f3 || '', b1: 80, b2: 115, maxCm: 225, dead: 0, suct: 30, cm: 0, level: 0, mw: '' };
+}
+function mr8000Tanks() {
+  const cok = (name, use, k = 'bölme') => ({ id: uid(), name, comps: [mrComp('1. ' + k, use, 4.7, 0.724), mrComp('2. ' + k, use, 6.6, 0.532, 0.786, 1.017)] });
   return [
-    { id: uid(), name: 'Shaker tankı', comps: [
-      { name: 'Kum kapanı', use: 'settle', shape: 'rect', L: 6, W: 8, H: 7, level: 6.2, mw: '' },
-      { name: 'Degasser', use: 'settle', shape: 'rect', L: 8, W: 8, H: 7, level: 5.8, mw: '' } ] },
-    { id: uid(), name: 'Aktif tank', comps: [
-      { name: 'Aktif 1', use: 'active', shape: 'rect', L: 12, W: 8, H: 7, level: 5.5, mw: 10.5 },
-      { name: 'Emiş', use: 'active', shape: 'rect', L: 12, W: 8, H: 7, level: 5.0, mw: 10.5 } ] },
-    { id: uid(), name: 'Rezerv tank', comps: [
-      { name: 'Rezerv 1', use: 'reserve', shape: 'rect', L: 16, W: 8, H: 7, level: 4.0, mw: 11.2 },
-      { name: 'Su', use: 'other', shape: 'rect', L: 10, W: 8, H: 7, level: 6.0, mw: 8.33 } ] },
-    { id: uid(), name: 'Trip tank', comps: [
-      { name: 'Trip', use: 'trip', shape: 'cyl', L: 4, W: 0, H: 10, level: 6.5, mw: 10.5 } ] }
+    { id: uid(), name: 'Elek tankı', comps: [mrComp('3. bölme', 'active', 2.16, 0.333), mrComp('2. bölme', 'active', 2.16, 0.333), mrComp('1. bölme', 'active', 2.15, 0.331), mrComp('Kum tuzağı', 'active', 2.08, 0.298, 0.321, 0.321)] },
+    cok('Çökelme tankı', 'active'),
+    { id: uid(), name: 'Emiş-1 tankı', comps: [mrComp('1. bölme', 'active', 2.25, 0.347), mrComp('2. bölme', 'active', 3.73, 0.575), mrComp('3. bölme', 'active', 5.3, 0.344, 0.592, 0.817)] },
+    cok('Emiş-2 tankı', 'reserve', 'kısım'),
+    cok('Hopper', 'reserve'),
+    cok('Rezerv-1 tankı', 'reserve'),
+    cok('Rezerv-2 tankı', 'reserve'),
+    { id: uid(), name: 'Su tankı-1', comps: [mrComp('Su', 'other', 11.3, 1.256, 1.51, 1.741)] },
+    { id: uid(), name: 'Su tankı-2', comps: [mrComp('Su', 'other', 11.3, 1.256, 1.51, 1.741)] }
   ];
 }
+function sampleTanks() { return mr8000Tanks(); }
 function sampleStock() {
   return [
     { id: uid(), name: 'Barit', unit: 'torba', kg: 50, qty: 400, min: 100 },
@@ -111,7 +142,7 @@ try { navigator.storage && navigator.storage.persist && navigator.storage.persis
 /* ---------------- gezinme ---------------- */
 const GROUPS = {
   kuyu: [['kuyu', 'Kuyu & Arşiv'], ['hacim', 'Kuyu Hacmi'], ['tally', 'Tally']],
-  camur: [['olcum', 'Ölçümler'], ['seviye', 'Seviye (cm)'], ['tank', 'Tanklar'], ['stok', 'Stok'], ['hazir', 'Hazırlama'], ['agir', 'Ağırlaştırma'], ['seyr', 'Seyreltme']],
+  camur: [['olcum', 'Ölçümler'], ['seviye', 'Seviye (cm)'], ['tank', 'Tanklar'], ['stok', 'Stok'], ['hazir', 'Hazırlama'], ['agir', 'Ağırlaştırma'], ['seyr', 'Düşürme'], ['kati', 'Katı analizi']],
   hesap: [['pompa', 'Dolaşım'], ['hid', 'Basınç'], ['kill', '<span lang="en">Kill sheet</span>'], ['cim', 'Çimento'], ['hidr', 'Hidrolik'], ['trip', 'Tripping']]
 };
 function showGroup(g) {
@@ -149,11 +180,36 @@ function setUnit(u, convert) {
 }
 $('u-ft').onclick = () => setUnit('ft', true); $('u-m').onclick = () => setUnit('m', true);
 
+/* yoğunluk birimi: ppg ↔ lb/ft³ */
+document.querySelectorAll('small.du').forEach(s => { const i = s.closest('label') && s.closest('label').querySelector('input'); if (i) i.dataset.dens = '1'; });
+function setDUnit(u, convert) {
+  const old = dunit();
+  if (convert && old !== u) {
+    const fac = u === 'pcf' ? PCF : 1 / PCF, d = u === 'pcf' ? 2 : 3;
+    CALC_INPUTS.forEach(id => { const el = $(id); if (el.dataset.dens && el.value !== '' && isFinite(num(el.value))) { const v = round(num(el.value) * fac, d); el.value = v; W().vals[id] = String(v); } });
+    PROPS.filter(p => p.dens).forEach(p => { const el = $('op-' + p.k); if (el && el.value !== '' && isFinite(num(el.value))) el.value = round(num(el.value) * fac, d); });
+  }
+  DB.dunit = u; save();
+  $('d-ppg').setAttribute('aria-pressed', u === 'ppg'); $('d-pcf').setAttribute('aria-pressed', u === 'pcf');
+  document.querySelectorAll('.du').forEach(e => e.textContent = '(' + dLbl() + ')');
+  document.querySelectorAll('.du2').forEach(e => e.textContent = dLbl());
+  if (convert) { renderPropInputs(); renderAll(true); }
+}
+$('d-ppg').onclick = () => setDUnit('ppg', true); $('d-pcf').onclick = () => setDUnit('pcf', true);
+
 /* ---------------- hesap girdileri (kuyu bazlı) ---------------- */
-const CALC_INPUTS = [...document.querySelectorAll('#t-hacim input[id], #t-agir input[id], #t-agir select[id], #t-seyr input[id], #t-pompa input[id], #t-pompa select[id], #t-hid input[id], #t-kill input[id], #t-cim input[id], #t-hidr input[id], #t-trip input[id], #t-hazir select[id], #t-hazir input[id]')]
+const CALC_INPUTS = [...document.querySelectorAll('#t-hacim input[id], #t-agir input[id], #t-agir select[id], #t-seyr input[id], #t-seyr select[id], #t-pompa input[id], #t-pompa select[id], #t-hid input[id], #t-kill input[id], #t-cim input[id], #t-hidr input[id], #t-hidr select[id], #t-trip input[id], #t-hazir select[id], #t-hazir input[id], #t-kati input[id], #t-kati select[id]')]
   .map(e => e.id).filter(id => !['a-stock', 'z-tank'].includes(id));
 const DEFAULTS = Object.fromEntries(CALC_INPUTS.map(id => [id, $(id).value]));
-function loadCalcInputs() { const v = W().vals || {}; CALC_INPUTS.forEach(id => { $(id).value = v[id] != null ? v[id] : DEFAULTS[id]; }); }
+function loadCalcInputs() {
+  const v = W().vals || {};
+  CALC_INPUTS.forEach(id => {
+    const el = $(id); if (v[id] != null) { el.value = v[id]; return; }
+    let d = DEFAULTS[id]; const x = num(d); // varsayılanlar ft ve ppg cinsinden yazılı
+    if (d !== '' && isFinite(x) && el.tagName === 'INPUT') { if (el.dataset.len && unit() === 'm') d = String(round(x / M_FT, 2)); if (el.dataset.dens && isPcf()) d = String(round(x * PCF, 1)); }
+    el.value = d;
+  });
+}
 CALC_INPUTS.forEach(id => $(id).addEventListener('input', () => { W().vals[id] = $(id).value; save(); calcAll(); }));
 
 /* =========================================================
@@ -335,7 +391,11 @@ function calcPompa() {
    ÇAMUR ÖLÇÜMLERİ
    ========================================================= */
 let editingRep = null, chartKey = 'mw';
-$('o-props').innerHTML = PROPS.map(p => `<label>${p.n} <small>${p.u ? '(' + p.u + ')' : ''}</small><input id="op-${p.k}" type="text" inputmode="decimal" step="any"></label>`).join('');
+function renderPropInputs() {
+  const keep = Object.fromEntries(PROPS.map(p => [p.k, $('op-' + p.k) ? $('op-' + p.k).value : '']));
+  $('o-props').innerHTML = PROPS.map(p => `<label>${p.n} <small>${pU(p) ? '(' + pU(p) + ')' : ''}</small><input id="op-${p.k}" type="text" inputmode="decimal" step="any" value="${esc(keep[p.k])}"></label>`).join('');
+}
+renderPropInputs();
 function stat(k, v) {
   if (v == null || !isFinite(v)) return 'na';
   const t = W().targets[k] || {};
@@ -343,7 +403,11 @@ function stat(k, v) {
   if (t.hi != null && t.hi !== '' && v > t.hi) return 'hi';
   return 'ok';
 }
-const rangeTxt = k => { const t = W().targets[k] || {}; const lo = t.lo != null && t.lo !== '', hi = t.hi != null && t.hi !== ''; return lo && hi ? `${f(t.lo, 2).replace(/,?0+$/, '')}–${f(t.hi, 2).replace(/,?0+$/, '')}` : lo ? `≥ ${t.lo}` : hi ? `≤ ${t.hi}` : 'hedef yok'; };
+const rangeTxt = k => {
+  const p = PROPS.find(x => x.k === k), t = W().targets[k] || {}, lo = t.lo != null && t.lo !== '', hi = t.hi != null && t.hi !== '';
+  const s = v => f(pOut(p, +v), pD(p)).replace(/,0+$/, '').replace(/(,\d*?)0+$/, '$1');
+  return lo && hi ? `${s(t.lo)}–${s(t.hi)}` : lo ? `≥ ${s(t.lo)}` : hi ? `≤ ${s(t.hi)}` : 'hedef yok';
+};
 const sortedReps = () => [...W().reports].sort((a, b) => (a.time || '').localeCompare(b.time || ''));
 function renderOlcum(skipTgt) {
   const reps = sortedReps(), last = reps[reps.length - 1];
@@ -352,7 +416,7 @@ function renderOlcum(skipTgt) {
     const v = last ? last.v[p.k] : null, s = stat(p.k, v);
     const lbl = { ok: 'aralıkta', lo: 'düşük', hi: 'yüksek', na: '—' }[s];
     return `<button class="prop ${s !== 'na' ? s : ''}" data-k="${p.k}" aria-pressed="${p.k === chartKey}">
-      <span class="pn">${p.n}</span><span class="pv">${v != null && isFinite(v) ? f(v, p.d) : '—'} <small style="font-size:.7rem;color:var(--muted)">${p.u}</small></span>
+      <span class="pn">${p.n}</span><span class="pv">${v != null && isFinite(v) ? f(pOut(p, v), pD(p)) : '—'} <small style="font-size:.7rem;color:var(--muted)">${pU(p)}</small></span>
       <span class="pr"><span>${rangeTxt(p.k)}</span>${s !== 'na' ? `<span class="chip ${s}">${lbl}</span>` : ''}</span></button>`;
   }).join('');
   renderTrend();
@@ -360,21 +424,23 @@ function renderOlcum(skipTgt) {
   const cols = PROPS.filter(p => reps.some(r => r.v[p.k] != null && isFinite(r.v[p.k])));
   $('histTable').innerHTML = reps.length ? `<tr><th>Tarih</th><th class="n">Derinlik</th>${cols.map(p => `<th class="n">${p.n}</th>`).join('')}<th>Not</th><th></th></tr>` +
     [...reps].reverse().map(r => `<tr data-rep="${r.id}" style="cursor:pointer"><td>${fmtDate(r.time)}</td><td class="n">${r.depth ? f(fromFt(r.depth), 0) : '—'}</td>` +
-      cols.map(p => { const v = r.v[p.k], s = stat(p.k, v); return `<td class="n ${s !== 'na' && s !== 'ok' ? 'c-' + s : ''}">${v != null && isFinite(v) ? f(v, p.d) : ''}</td>`; }).join('') +
+      cols.map(p => { const v = r.v[p.k], s = stat(p.k, v); return `<td class="n ${s !== 'na' && s !== 'ok' ? 'c-' + s : ''}">${v != null && isFinite(v) ? f(pOut(p, v), pD(p)) : ''}</td>`; }).join('') +
       `<td>${esc(r.note || '')}</td><td><button class="btn ghost" data-delrep="${r.id}">Sil</button></td></tr>`).join('')
     : '<tr><td style="padding:14px;color:var(--muted)">Kayıtlı ölçüm yok.</td></tr>';
   // hedef tablosu
   if (!skipTgt) $('tgtTable').innerHTML = `<tr><th>Özellik</th><th>Alt</th><th>Üst</th></tr>` + PROPS.map(p => {
     const t = W().targets[p.k] || {};
-    return `<tr><td>${p.n} <small style="color:var(--muted)">${p.u}</small></td><td><input id="tg-${p.k}-lo" data-tk="${p.k}" data-tb="lo" type="text" inputmode="decimal" step="any" value="${t.lo ?? ''}"></td><td><input id="tg-${p.k}-hi" data-tk="${p.k}" data-tb="hi" type="text" inputmode="decimal" step="any" value="${t.hi ?? ''}"></td></tr>`;
+    const tv = x => x == null || x === '' ? '' : round(pOut(p, +x), pD(p) + 1);
+    return `<tr><td>${p.n} <small style="color:var(--muted)">${pU(p)}</small></td><td><input id="tg-${p.k}-lo" data-tk="${p.k}" data-tb="lo" type="text" inputmode="decimal" step="any" value="${tv(t.lo)}"></td><td><input id="tg-${p.k}-hi" data-tk="${p.k}" data-tb="hi" type="text" inputmode="decimal" step="any" value="${tv(t.hi)}"></td></tr>`;
   }).join('');
   if (!$('o-time').value) $('o-time').value = nowLocal();
 }
 function renderTrend() {
   const p = PROPS.find(x => x.k === chartKey), reps = sortedReps().filter(r => r.v[chartKey] != null && isFinite(r.v[chartKey]));
-  $('chartTitle').textContent = `Trend · ${p.n}${p.u ? ' (' + p.u + ')' : ''}`;
+  $('chartTitle').textContent = `Trend · ${p.n}${pU(p) ? ' (' + pU(p) + ')' : ''}`;
   if (reps.length < 2) { $('trend').innerHTML = `<p class="note">Grafik için en az iki ölçüm gerekli.</p>`; return; }
-  const t = W().targets[chartKey] || {}, vals = reps.map(r => r.v[chartKey]);
+  const t0 = W().targets[chartKey] || {}, t = { lo: t0.lo == null || t0.lo === '' ? t0.lo : pOut(p, +t0.lo), hi: t0.hi == null || t0.hi === '' ? t0.hi : pOut(p, +t0.hi) };
+  const vals = reps.map(r => pOut(p, r.v[chartKey]));
   let lo = Math.min(...vals), hi = Math.max(...vals);
   if (t.lo != null && t.lo !== '') lo = Math.min(lo, +t.lo); if (t.hi != null && t.hi !== '') hi = Math.max(hi, +t.hi);
   const pad = (hi - lo) * 0.12 || Math.abs(hi) * 0.05 || 1; lo -= pad; hi += pad;
@@ -382,19 +448,19 @@ function renderTrend() {
   let s = `<svg viewBox="0 0 ${Wd} ${H}" role="img" aria-label="${p.n} trendi">`;
   const tl = t.lo != null && t.lo !== '' ? +t.lo : lo, th = t.hi != null && t.hi !== '' ? +t.hi : hi;
   if ((t.lo != null && t.lo !== '') || (t.hi != null && t.hi !== '')) s += `<rect x="${L}" y="${y(th)}" width="${Wd - L - R}" height="${Math.max(0, y(tl) - y(th))}" style="fill:var(--ok-bg)"/>`;
-  for (let i = 0; i <= 4; i++) { const v = lo + (hi - lo) * i / 4; s += `<line x1="${L}" x2="${Wd - R}" y1="${y(v)}" y2="${y(v)}" style="stroke:var(--line)" stroke-width="1"/><text x="${L - 6}" y="${y(v) + 4}" text-anchor="end" font-size="11" style="fill:var(--muted);font-family:var(--f-num)">${f(v, p.d)}</text>`; }
+  for (let i = 0; i <= 4; i++) { const v = lo + (hi - lo) * i / 4; s += `<line x1="${L}" x2="${Wd - R}" y1="${y(v)}" y2="${y(v)}" style="stroke:var(--line)" stroke-width="1"/><text x="${L - 6}" y="${y(v) + 4}" text-anchor="end" font-size="11" style="fill:var(--muted);font-family:var(--f-num)">${f(v, pD(p))}</text>`; }
   s += `<polyline points="${vals.map((v, i) => x(i) + ',' + y(v)).join(' ')}" style="fill:none;stroke:var(--ink)" stroke-width="2" stroke-linejoin="round"/>`;
-  vals.forEach((v, i) => { const st = stat(chartKey, v); s += `<circle cx="${x(i)}" cy="${y(v)}" r="${i === vals.length - 1 ? 5.5 : 4}" style="fill:var(--${st === 'na' ? 'muted' : st});stroke:var(--panel)" stroke-width="2"/>`; });
+  vals.forEach((v, i) => { const st = stat(chartKey, reps[i].v[chartKey]); s += `<circle cx="${x(i)}" cy="${y(v)}" r="${i === vals.length - 1 ? 5.5 : 4}" style="fill:var(--${st === 'na' ? 'muted' : st});stroke:var(--panel)" stroke-width="2"/>`; });
   s += `<text x="${L}" y="${H - 8}" font-size="11" style="fill:var(--muted)">${fmtDate(reps[0].time)}</text><text x="${Wd - R}" y="${H - 8}" text-anchor="end" font-size="11" style="fill:var(--muted)">${fmtDate(reps[reps.length - 1].time)}</text></svg>`;
   $('trend').innerHTML = s;
 }
 $('propCards').addEventListener('click', e => { const b = e.target.closest('.prop'); if (b) { chartKey = b.dataset.k; renderOlcum(); } });
 $('o-tgtBtn').onclick = () => $('o-tgt').hidden = !$('o-tgt').hidden;
-$('tgtTable').addEventListener('input', e => { const i = e.target; if (!i.dataset.tk) return; const t = W().targets[i.dataset.tk] = W().targets[i.dataset.tk] || {}; const v = num(i.value); t[i.dataset.tb] = isFinite(v) ? v : null; save(); renderOlcum(true); });
+$('tgtTable').addEventListener('input', e => { const i = e.target; if (!i.dataset.tk) return; const p = PROPS.find(x => x.k === i.dataset.tk), t = W().targets[i.dataset.tk] = W().targets[i.dataset.tk] || {}; const v = num(i.value); t[i.dataset.tb] = isFinite(v) ? pIn(p, v) : null; save(); renderOlcum(true); });
 function clearForm() { editingRep = null; PROPS.forEach(p => $('op-' + p.k).value = ''); $('o-note').value = ''; $('o-time').value = nowLocal(); $('olcumFormTitle').textContent = 'Yeni ölçüm'; $('o-save').textContent = 'Ölçümü kaydet'; $('o-cancel').hidden = true; }
 $('o-save').onclick = () => {
   const v = {}; let any = false;
-  PROPS.forEach(p => { const x = n('op-' + p.k); if (isFinite(x)) { v[p.k] = x; any = true; } });
+  PROPS.forEach(p => { const x = n('op-' + p.k); if (isFinite(x)) { v[p.k] = pIn(p, x); any = true; } });
   if (!any) { toast('En az bir özellik değeri gir.'); return; }
   const d = n('o-depth');
   const rec = { id: editingRep || uid(), time: $('o-time').value || nowLocal(), depth: isFinite(d) ? toFt(d) : '', src: $('o-src').value, note: $('o-note').value, v };
@@ -409,7 +475,7 @@ $('histTable').addEventListener('click', e => {
   if (del) { if (confirm('Bu ölçüm silinsin mi?')) { W().reports = W().reports.filter(r => r.id !== del); save(); renderOlcum(); } return; }
   const tr = e.target.closest('tr[data-rep]'); if (!tr) return;
   const r = W().reports.find(x => x.id === tr.dataset.rep); if (!r) return;
-  editingRep = r.id; PROPS.forEach(p => $('op-' + p.k).value = r.v[p.k] ?? '');
+  editingRep = r.id; PROPS.forEach(p => $('op-' + p.k).value = r.v[p.k] != null ? round(pOut(p, r.v[p.k]), pD(p) + 1) : '');
   $('o-time').value = r.time; $('o-depth').value = r.depth ? round(fromFt(r.depth), 1) : ''; $('o-src').value = r.src || 'Akış hattı'; $('o-note').value = r.note || '';
   $('olcumFormTitle').textContent = 'Ölçümü düzenle · ' + fmtDate(r.time); $('o-save').textContent = 'Değişiklikleri kaydet'; $('o-cancel').hidden = false;
   $('olcumFormTitle').scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -435,29 +501,57 @@ function interp(pts, x, xi = 0, yi = 1) {
   return dx ? a[yi] + (b[yi] - a[yi]) * (x - a[xi]) / dx : a[yi];
 }
 function dimArea(c) { return c.shape === 'cyl' ? Math.PI / 4 * (+c.L || 0) ** 2 : (+c.L || 0) * (+c.W || 0); }
+/* kademeli katsayı: [başlangıç cm, bitiş cm, bbl/cm] parçaları */
+function stepSegs(c) {
+  const f1 = +c.f1 || 0, f2 = c.f2 !== '' && c.f2 != null && isFinite(+c.f2) ? +c.f2 : f1, f3 = c.f3 !== '' && c.f3 != null && isFinite(+c.f3) ? +c.f3 : f2;
+  const b1 = isFinite(+c.b1) && c.b1 !== '' ? +c.b1 : 80, b2 = Math.max(b1, isFinite(+c.b2) && c.b2 !== '' ? +c.b2 : 115);
+  return [[0, b1, f1], [b1, b2, f2], [b2, Infinity, f3]];
+}
 function volAtCm(c, cm) {
   const m = c.method || 'dim';
   if (m === 'factor') return Math.max(0, cm * (+c.factor || 0) + (+c.dead || 0));
+  if (m === 'step') { let v = +c.dead || 0; for (const [a, b, k] of stepSegs(c)) if (cm > a) v += (Math.min(cm, b) - a) * k; return Math.max(0, v); }
   if (m === 'table') return Math.max(0, interp(sortedTable(c), cm, 0, 1));
   return tankBbl(dimArea(c) * cm / CM_FT);
 }
 function cmAtVol(c, bbl) {
   const m = c.method || 'dim';
   if (m === 'factor') return +c.factor ? (bbl - (+c.dead || 0)) / +c.factor : NaN;
+  if (m === 'step') {
+    let rem = bbl - (+c.dead || 0); if (rem <= 0) return 0;
+    for (const [a, b, k] of stepSegs(c)) { if (!(k > 0)) return NaN; const cap = (b - a) * k; if (rem <= cap) return a + rem / k; rem -= cap; }
+    return NaN;
+  }
   if (m === 'table') { const t = sortedTable(c); return t.length ? interp(t, bbl, 1, 0) : NaN; }
   const per = volAtCm(c, 1); return per ? bbl / per : NaN;
 }
 function maxCm(c) {
   const m = c.method || 'dim';
-  if (m === 'factor') return +c.maxCm || 0;
+  if (m === 'factor' || m === 'step') return +c.maxCm || 0;
   if (m === 'table') { const t = sortedTable(c); return t.length ? t[t.length - 1][0] : 0; }
   return (+c.H || 0) * CM_FT;
 }
 function compVol(c, atLevelFt) { return volAtCm(c, atLevelFt == null ? cmOf(c) : atLevelFt * CM_FT); }
+/* kullanılabilir (pompalanabilir) hacim: emiş seviyesinin üstü */
+const suctCm = c => isFinite(+c.suct) && c.suct !== '' && c.suct != null ? +c.suct : 0;
+function compUsable(c) { const s = suctCm(c); return s > 0 ? Math.max(0, compVol(c) - volAtCm(c, s)) : compVol(c); }
 function tankTotals() {
-  const t = { active: 0, reserve: 0, trip: 0, settle: 0, other: 0, all: 0, mwSum: 0 };
-  (W().tanks || []).forEach(tk => tk.comps.forEach(c => { const v = compVol(c); t[c.use] = (t[c.use] || 0) + v; t.all += v; if (c.use === 'active' && +c.mw) t.mwSum += v * c.mw; }));
+  const t = { active: 0, reserve: 0, trip: 0, settle: 0, other: 0, all: 0, mwSum: 0, mwVol: 0, activeUse: 0, reserveUse: 0 };
+  (W().tanks || []).forEach(tk => tk.comps.forEach(c => {
+    const v = compVol(c), u = compUsable(c); t[c.use] = (t[c.use] || 0) + v; t.all += v;
+    if (c.use === 'active') { t.activeUse += u; if (+c.mw) { t.mwSum += v * c.mw; t.mwVol += v; } }
+    if (c.use === 'reserve') t.reserveUse += u;
+  }));
   return t;
+}
+const methodTxt = c => { const m = c.method || 'dim'; if (m === 'step') { const g = stepSegs(c); return `kademeli ${f(g[0][2], 3)} / ${f(g[1][2], 3)} / ${f(g[2][2], 3)}`; } if (m === 'factor') return `${f(+c.factor, 3)} bbl/cm`; if (m === 'table') return `tablo (${sortedTable(c).length} nokta)`; return 'ölçülerden'; };
+function totalsHtml(t, d = 0) {
+  return `<div><span>Aktif sistem</span><b>${f(t.active, d)} bbl</b></div><div><span>Aktif · emiş üstü</span><b>${f(t.activeUse, d)} bbl</b></div>`
+    + `<div><span>Rezerv / yedek</span><b>${f(t.reserve, d)} bbl</b></div><div><span>Rezerv · emiş üstü</span><b>${f(t.reserveUse, d)} bbl</b></div>`
+    + (t.trip ? `<div><span>Trip</span><b>${f(t.trip, d)} bbl</b></div>` : '') + `<div><span>Aktif + rezerv</span><b>${f(t.active + t.reserve, d)} bbl</b></div>`
+    + `<div><span>Tüm tanklar</span><b>${f(t.all, d)} bbl</b><span style="text-transform:none">${f(t.all * BBL_M3, 1)} m³</span></div>`
+    + `<div><span>Aktif + kuyu</span><b>${f(t.active + wellRes.pipe + wellRes.ann, d)} bbl</b></div>`
+    + (t.mwVol ? `<div><span>Aktif ort. yoğunluk</span><b>${fd(t.mwSum / t.mwVol)} ${dLbl()}</b></div>` : '');
 }
 function renderTanks() {
   const tanks = W().tanks || [];
@@ -468,19 +562,18 @@ function renderTanks() {
     body += `<rect x="2" y="${top - 8}" width="${w - 4}" height="${h + 16}" rx="6" style="fill:none;stroke:var(--muted)" stroke-width="1.5"/>`;
     body += `<text x="6" y="${top - 16}" font-size="13" font-weight="700" style="fill:var(--ink);font-family:var(--f-display);letter-spacing:.04em">${esc(tk.name).toLocaleUpperCase('tr-TR')}</text>`;
     tk.comps.forEach((c, i) => {
-      const cx = 2 + padX + i * cw, mx = maxCm(c), lvl = mx > 0 ? Math.max(0, Math.min(1, cmOf(c) / mx)) : 0, fh = h * lvl, v = compVol(c);
+      const cx = 2 + padX + i * cw, mx = maxCm(c), lvl = mx > 0 ? Math.max(0, Math.min(1, cmOf(c) / mx)) : 0, fh = h * lvl, v = compVol(c), sc = suctCm(c);
       body += `<rect x="${cx + 4}" y="${top}" width="${cw - 8}" height="${h}" rx="${c.shape === 'cyl' ? 14 : 3}" style="fill:var(--field);stroke:var(--line)" stroke-width="1.2"/>`;
       body += `<rect x="${cx + 5}" y="${top + h - fh}" width="${cw - 10}" height="${Math.max(0, fh - 1)}" rx="${c.shape === 'cyl' ? 12 : 2}" style="fill:var(${USEVAR[c.use] || '--u-other'})" opacity=".85"/>`;
-      body += `<text x="${cx + cw / 2}" y="${top + h - fh - 5 < top + 12 ? top + 14 : top + h - fh - 5}" text-anchor="middle" font-size="11" style="fill:var(--ink);font-family:var(--f-num)">%${Math.round(lvl * 100)}</text>`;
+      if (mx > 0 && sc > 0 && sc < mx) { const ys = top + h - h * sc / mx; body += `<line x1="${cx + 5}" x2="${cx + cw - 5}" y1="${ys}" y2="${ys}" style="stroke:var(--ink)" stroke-width="1" stroke-dasharray="3 3" opacity=".55"/>`; }
+      body += `<text x="${cx + cw / 2}" y="${top + h - fh - 5 < top + 12 ? top + 14 : top + h - fh - 5}" text-anchor="middle" font-size="11" style="fill:var(--ink);font-family:var(--f-num)">${f(cmOf(c), 0)} cm</text>`;
       body += `<text x="${cx + cw / 2}" y="${top + h + 18}" text-anchor="middle" font-size="12" font-weight="600" style="fill:var(--ink)">${esc(c.name).slice(0, 12)}</text>`;
-      body += `<text x="${cx + cw / 2}" y="${top + h + 34}" text-anchor="middle" font-size="11.5" style="fill:var(--muted);font-family:var(--f-num)">${f(v, 0)} bbl</text>`;
-      if (+c.mw) body += `<text x="${cx + cw / 2}" y="${top + h + 50}" text-anchor="middle" font-size="11.5" style="fill:var(--muted);font-family:var(--f-num)">${f(+c.mw, 2)} ppg</text>`;
+      body += `<text x="${cx + cw / 2}" y="${top + h + 34}" text-anchor="middle" font-size="11.5" style="fill:var(--muted);font-family:var(--f-num)">${f(v, 1)} bbl</text>`;
+      if (+c.mw) body += `<text x="${cx + cw / 2}" y="${top + h + 50}" text-anchor="middle" font-size="11.5" style="fill:var(--muted);font-family:var(--f-num)">${fd(+c.mw)} ${dLbl()}</text>`;
     });
     return `<svg viewBox="0 0 ${w} ${H}" width="${w}" height="${H}" role="img" aria-label="${esc(tk.name)}">${body}</svg>`;
   }).join('') : '<p class="note">Henüz tank yok. Aşağıdan ekle.</p>';
-  const t = tankTotals();
-  $('tankTotals').innerHTML = `<div><span>Aktif sistem</span><b>${f(t.active, 0)} bbl</b></div><div><span>Rezerv</span><b>${f(t.reserve, 0)} bbl</b></div><div><span>Trip</span><b>${f(t.trip, 0)} bbl</b></div><div><span>Tüm tanklar</span><b>${f(t.all, 0)} bbl</b></div>`
-    + `<div><span>Aktif + kuyu</span><b>${f(t.active + wellRes.pipe + wellRes.ann, 0)} bbl</b></div>` + (t.mwSum ? `<div><span>Aktif ort. yoğunluk</span><b>${f(t.mwSum / t.active, 2)} ppg</b></div>` : '');
+  $('tankTotals').innerHTML = totalsHtml(tankTotals());
   // düzenleme
   if (renderTanks.skipEdit) return;
   const u = unit();
@@ -488,16 +581,19 @@ function renderTanks() {
     <div class="sec">
       <div class="sec-h"><input data-tn="${ti}" type="text" value="${esc(tk.name)}" style="font-weight:600;max-width:260px" aria-label="Tank adı"><button class="btn ghost" data-deltank="${ti}">Tankı sil</button></div>
       <div class="tw"><table class="t">
-        <tr><th>Bölme</th><th>Kullanım</th><th>Şekil</th><th class="n">Boy / çap (${u})</th><th class="n">En (${u})</th><th class="n">Yükseklik (${u})</th><th class="n">Seviye (${u})</th><th class="n">MW (ppg)</th><th class="n">Hacim</th><th class="n">bbl/${u === 'm' ? 'cm' : 'in'}</th><th></th></tr>
-        ${tk.comps.map((c, ci) => `<tr>
+        <tr><th>Bölme</th><th>Kullanım</th><th>cm → varil</th><th class="n">Seviye (cm)</th><th class="n">Emiş (cm)</th><th class="n">MW (<span class="du2">${dLbl()}</span>)</th><th class="n">Hacim (bbl)</th><th class="n">Emiş üstü</th><th>Şekil</th><th class="n">Boy / çap (${u})</th><th class="n">En (${u})</th><th class="n">Yükseklik (${u})</th><th></th></tr>
+        ${tk.comps.map((c, ci) => { const dim = (c.method || 'dim') === 'dim'; return `<tr>
           <td><input data-t="${ti}" data-c="${ci}" data-k="name" type="text" value="${esc(c.name)}"></td>
           <td><select data-t="${ti}" data-c="${ci}" data-k="use">${Object.entries(USES).map(([k, l]) => `<option value="${k}"${c.use === k ? ' selected' : ''}>${l}</option>`).join('')}</select></td>
-          <td><select data-t="${ti}" data-c="${ci}" data-k="shape"><option value="rect"${c.shape === 'rect' ? ' selected' : ''}>Dikdörtgen</option><option value="cyl"${c.shape === 'cyl' ? ' selected' : ''}>Silindir</option></select></td>
-          ${['L', 'W', 'H', 'level'].map(k => `<td><input data-t="${ti}" data-c="${ci}" data-k="${k}" type="text" inputmode="decimal" step="any" value="${k === 'W' && c.shape === 'cyl' ? '' : round(fromFt(+c[k] || 0), 3)}"${k === 'W' && c.shape === 'cyl' ? ' disabled placeholder="—"' : ''}></td>`).join('')}
-          <td><input data-t="${ti}" data-c="${ci}" data-k="mw" type="text" inputmode="decimal" step="any" value="${c.mw ?? ''}"></td>
+          <td style="font-size:.8rem;color:var(--muted)">${methodTxt(c)}</td>
+          <td><input data-t="${ti}" data-c="${ci}" data-k="cm" type="text" inputmode="decimal" value="${round(cmOf(c), 1)}"></td>
+          <td><input data-t="${ti}" data-c="${ci}" data-k="suct" type="text" inputmode="decimal" value="${c.suct ?? ''}" placeholder="0"></td>
+          <td><input data-t="${ti}" data-c="${ci}" data-k="mw" type="text" inputmode="decimal" step="any" value="${+c.mw ? round(fromPpg(+c.mw), isPcf() ? 1 : 2) : ''}"></td>
           <td class="n" data-vol="${ti}-${ci}">${f(compVol(c), 1)}</td>
-          <td class="n" data-per="${ti}-${ci}">${f(compVol(c, u === 'm' ? 0.01 * M_FT : 1 / 12), 2)}</td>
-          <td><button class="btn ghost" data-delc="${ti}-${ci}">Sil</button></td></tr>`).join('')}
+          <td class="n" data-use="${ti}-${ci}">${f(compUsable(c), 1)}</td>
+          <td><select data-t="${ti}" data-c="${ci}" data-k="shape"${dim ? '' : ' disabled'}><option value="rect"${c.shape === 'rect' ? ' selected' : ''}>Dikdörtgen</option><option value="cyl"${c.shape === 'cyl' ? ' selected' : ''}>Silindir</option></select></td>
+          ${['L', 'W', 'H'].map(k => `<td><input data-t="${ti}" data-c="${ci}" data-k="${k}" type="text" inputmode="decimal" step="any" value="${k === 'W' && c.shape === 'cyl' ? '' : round(fromFt(+c[k] || 0), 2)}"${(k === 'W' && c.shape === 'cyl') || !dim ? ' disabled' : ''}></td>`).join('')}
+          <td><button class="btn ghost" data-delc="${ti}-${ci}">Sil</button></td></tr>`; }).join('')}
       </table></div>
       <div><button class="btn ghost" data-addc="${ti}">+ Bölme ekle</button></div>
     </div>`).join('');
@@ -507,12 +603,14 @@ $('tankEdit').addEventListener('input', e => {
   if (i.dataset.tn != null) { tanks[i.dataset.tn].name = i.value; }
   else if (i.dataset.k) {
     const c = tanks[i.dataset.t].comps[i.dataset.c], k = i.dataset.k;
-    if (['L', 'W', 'H', 'level'].includes(k)) { c[k] = toFt(num(i.value) || 0); if (k === 'level') c.cm = round(c.level * CM_FT, 1); }
-    else if (k === 'mw') c.mw = i.value === '' ? '' : num(i.value);
+    if (['L', 'W', 'H'].includes(k)) c[k] = toFt(num(i.value) || 0);
+    else if (k === 'cm') { const v = num(i.value); c.cm = isFinite(v) ? v : 0; c.level = c.cm / CM_FT; }
+    else if (k === 'suct') { const v = num(i.value); c.suct = isFinite(v) ? v : ''; }
+    else if (k === 'mw') { const v = num(i.value); c.mw = isFinite(v) ? toPpg(v) : ''; }
     else c[k] = i.value;
     const key = i.dataset.t + '-' + i.dataset.c;
     const vc = document.querySelector(`[data-vol="${key}"]`); if (vc) vc.textContent = f(compVol(c), 1);
-    const pc = document.querySelector(`[data-per="${key}"]`); if (pc) pc.textContent = f(compVol(c, unit() === 'm' ? 0.01 * M_FT : 1 / 12), 2);
+    const uc = document.querySelector(`[data-use="${key}"]`); if (uc) uc.textContent = f(compUsable(c), 1);
   }
   save(); renderTanks.skipEdit = true; renderTanks(); renderTanks.skipEdit = false;
   if (i.dataset.k === 'shape') renderTanks();
@@ -521,16 +619,21 @@ $('tankEdit').addEventListener('change', e => { if (e.target.dataset.k === 'shap
 $('tankEdit').addEventListener('click', e => {
   const d = e.target.dataset, tanks = W().tanks;
   if (d.deltank != null) { if (confirm(`"${tanks[d.deltank].name}" silinsin mi?`)) { tanks.splice(+d.deltank, 1); save(); renderTanks(); } }
-  if (d.addc != null) { tanks[d.addc].comps.push({ name: 'Bölme ' + (tanks[d.addc].comps.length + 1), use: 'active', shape: 'rect', L: 10, W: 8, H: 7, level: 0, mw: '' }); save(); renderTanks(); }
+  if (d.addc != null) { tanks[d.addc].comps.push({ name: 'Bölme ' + (tanks[d.addc].comps.length + 1), use: 'active', shape: 'rect', L: 10, W: 8, H: 7, level: 0, cm: 0, suct: 30, mw: '' }); save(); renderTanks(); }
   if (d.delc) { const [t, c] = d.delc.split('-'); tanks[t].comps.splice(+c, 1); save(); renderTanks(); }
 });
-$('addTank').onclick = () => { W().tanks.push({ id: uid(), name: 'Tank ' + (W().tanks.length + 1), comps: [{ name: 'Bölme 1', use: 'active', shape: 'rect', L: 10, W: 8, H: 7, level: 0, mw: '' }] }); save(); renderTanks(); };
+$('addTank').onclick = () => { W().tanks.push({ id: uid(), name: 'Tank ' + (W().tanks.length + 1), comps: [{ name: 'Bölme 1', use: 'active', shape: 'rect', L: 10, W: 8, H: 7, level: 0, cm: 0, suct: 30, mw: '' }] }); save(); renderTanks(); };
+$('loadMR').onclick = () => {
+  const w = W(), has = (w.tanks || []).length;
+  if (has && !confirm('Mevcut tank listesi silinip MR 8000 tank seti (Elek, Çökelme, Emiş-1, Emiş-2, Hopper, Rezerv-1, Rezerv-2, Su-1, Su-2) yüklensin mi?')) return;
+  w.tanks = mr8000Tanks(); save(); renderTanks(); toast('MR 8000 tank seti yüklendi');
+};
 
 /* =========================================================
    TANK SEVİYESİ (cm)
    ========================================================= */
 const lvOpen = new Set();
-const METHODS = { dim: 'Ölçülerden (boy × en)', factor: 'Sabit katsayı (bbl/cm)', table: 'Kalibrasyon tablosu' };
+const METHODS = { step: 'Kademeli katsayı (eğimli taban)', factor: 'Sabit katsayı (bbl/cm)', table: 'Kalibrasyon tablosu', dim: 'Ölçülerden (boy × en)' };
 function parseTarget(c) { // { bbl } ya da null
   const s = String(c.target ?? '').trim(); if (!s) return null;
   const rel = /^[+-]/.test(s), v = num(s.replace(/^\+/, '')); if (!isFinite(v)) return { bad: true };
@@ -554,7 +657,7 @@ function lvCells(c) {
     }
   }
   const warn = mx && cm > mx ? ' <span class="chip hi">bölme yüksekliğini aşıyor</span>' : '';
-  return { bbl: f(bbl, 1), m3: f(bbl * BBL_M3, 2), per: isFinite(per) && per > 0 ? f(per, 2) : '—', need, diff: diff + (note ? ' ' + note : '') + warn };
+  return { bbl: f(bbl, 1), use: f(compUsable(c), 1), m3: f(bbl * BBL_M3, 2), per: isFinite(per) && per > 0 ? f(per, 3) : '—', need, diff: diff + (note ? ' ' + note : '') + warn };
 }
 function renderSeviye() {
   const tanks = W().tanks || [];
@@ -562,12 +665,13 @@ function renderSeviye() {
     <div class="card lv">
       <h2>${esc(tk.name)}</h2>
       <div class="tw"><table class="t">
-        <tr><th>Bölme</th><th class="n">Ölçülen (cm)</th><th class="n">Varil</th><th class="n">m³</th><th class="n">bbl / cm</th><th class="n">Hedef (bbl veya ±)</th><th class="n">Gereken (cm)</th><th>Yapılacak</th><th></th></tr>
+        <tr><th>Bölme</th><th class="n">Ölçülen (cm)</th><th class="n">Varil</th><th class="n">Emiş üstü</th><th class="n">m³</th><th class="n">bbl / cm</th><th class="n">Hedef (bbl veya ±)</th><th class="n">Gereken (cm)</th><th>Yapılacak</th><th></th></tr>
         ${tk.comps.map((c, ci) => { const k = ti + '-' + ci, v = lvCells(c); return `
         <tr>
-          <td><b>${esc(c.name)}</b><div class="note" style="margin:0;font-size:.74rem">${USES[c.use] || ''} · ${c.method === 'factor' ? 'katsayı' : c.method === 'table' ? 'tablo' : 'ölçü'}</div></td>
+          <td><b>${esc(c.name)}</b><div class="note" style="margin:0;font-size:.74rem">${USES[c.use] || ''} · ${{ step: 'kademeli', factor: 'katsayı', table: 'tablo' }[c.method] || 'ölçü'}</div></td>
           <td><input id="lv-cm-${k}" data-lv="${k}" data-lk="cm" type="text" inputmode="decimal" value="${round(cmOf(c), 1)}"></td>
           <td class="n big" data-o="bbl-${k}">${v.bbl}</td>
+          <td class="n" data-o="use-${k}">${v.use}</td>
           <td class="n" data-o="m3-${k}">${v.m3}</td>
           <td class="n" data-o="per-${k}">${v.per}</td>
           <td><input id="lv-tg-${k}" data-lv="${k}" data-lk="target" type="text" inputmode="decimal" placeholder="örn. +50" value="${esc(c.target ?? '')}"></td>
@@ -575,22 +679,30 @@ function renderSeviye() {
           <td data-o="diff-${k}">${v.diff}</td>
           <td><button class="btn ghost" data-lvcfg="${k}">Ayar</button></td>
         </tr>
-        ${lvOpen.has(k) ? `<tr class="cfg"><td colspan="9"><div class="cfgbox">
+        ${lvOpen.has(k) ? `<tr class="cfg"><td colspan="10"><div class="cfgbox">
           <label>cm → varil yöntemi<select data-lv="${k}" data-lk="method">${Object.entries(METHODS).map(([m, l]) => `<option value="${m}"${(c.method || 'dim') === m ? ' selected' : ''}>${l}</option>`).join('')}</select></label>
           ${(c.method || 'dim') === 'dim' ? `<p class="note" style="margin:0">Ölçüler <b>Tanklar</b> sekmesinden alınıyor: ${c.shape === 'cyl' ? 'çap ' + f(fromFt(+c.L), 2) : f(fromFt(+c.L), 2) + ' × ' + f(fromFt(+c.W), 2)} ${unit()}, yükseklik ${f(fromFt(+c.H), 2)} ${unit()}.</p>` : ''}
           ${c.method === 'factor' ? `<label>1 cm kaç varil <small>(bbl/cm)</small><input id="lv-f-${k}" data-lv="${k}" data-lk="factor" type="text" inputmode="decimal" value="${c.factor ?? ''}"></label>
             <label>Ölü hacim <small>(0 cm'deki bbl)</small><input id="lv-d-${k}" data-lv="${k}" data-lk="dead" type="text" inputmode="decimal" value="${c.dead ?? 0}"></label>
             <label>Bölme yüksekliği <small>(cm)</small><input id="lv-x-${k}" data-lv="${k}" data-lk="maxCm" type="text" inputmode="decimal" value="${c.maxCm ?? ''}"></label>` : ''}
+          ${c.method === 'step' ? `<label>1. kademe <small>(bbl/cm)</small><input id="lv-f1-${k}" data-lv="${k}" data-lk="f1" type="text" inputmode="decimal" value="${c.f1 ?? ''}"></label>
+            <label>1. kademe biter <small>(cm)</small><input id="lv-b1-${k}" data-lv="${k}" data-lk="b1" type="text" inputmode="decimal" value="${c.b1 ?? 80}"></label>
+            <label>2. kademe <small>(bbl/cm)</small><input id="lv-f2-${k}" data-lv="${k}" data-lk="f2" type="text" inputmode="decimal" value="${c.f2 ?? ''}"></label>
+            <label>2. kademe biter <small>(cm)</small><input id="lv-b2-${k}" data-lv="${k}" data-lk="b2" type="text" inputmode="decimal" value="${c.b2 ?? 115}"></label>
+            <label>3. kademe <small>(bbl/cm)</small><input id="lv-f3-${k}" data-lv="${k}" data-lk="f3" type="text" inputmode="decimal" value="${c.f3 ?? ''}"></label>
+            <label>Bölme yüksekliği <small>(cm)</small><input id="lv-x-${k}" data-lv="${k}" data-lk="maxCm" type="text" inputmode="decimal" value="${c.maxCm ?? ''}"></label>
+            <p class="note" style="margin:0;grid-column:1/-1">Hacim = 1. kademe × cm (sınıra kadar) + 2. kademe × aradaki cm + 3. kademe × kalan cm. Boş bırakılan kademe bir öncekinin katsayısını alır.</p>` : ''}
+          <label>Emiş seviyesi <small>(cm, altı pompalanamaz)</small><input id="lv-s-${k}" data-lv="${k}" data-lk="suct" type="text" inputmode="decimal" value="${c.suct ?? ''}" placeholder="0"></label>
           ${c.method === 'table' ? `<label style="grid-column:1/-1">Kalibrasyon tablosu <small>(her satıra: cm  varil — örn. "50  42,5")</small><textarea id="lv-t-${k}" data-lv="${k}" data-lk="table" placeholder="0  0&#10;10  8,6&#10;20  17,4">${esc((c.table || []).map(p => `${String(p[0]).replace('.', ',')}  ${String(p[1]).replace('.', ',')}`).join('\n'))}</textarea></label>
             <p class="note" style="margin:0">${sortedTable(c).length} satır okundu. Tablodaki noktalar arası doğrusal hesaplanır.</p>` : ''}
         </div></td></tr>` : ''}`; }).join('')}
       </table></div>
     </div>`).join('') : '<div class="card"><p class="note">Henüz tank yok. Önce Tanklar sekmesinden tank ve bölmeleri ekle.</p></div>';
-  renderLvTotals(); renderLvHist();
+  renderLvTotals(); renderLvHist(); renderBalance();
 }
 function renderLvTotals() {
   const t = tankTotals();
-  $('lvTotals').innerHTML = `<div><span>Aktif sistem</span><b>${f(t.active, 1)} bbl</b></div><div><span>Rezerv</span><b>${f(t.reserve, 1)} bbl</b></div><div><span>Trip</span><b>${f(t.trip, 1)} bbl</b></div><div><span>Tüm tanklar</span><b>${f(t.all, 1)} bbl</b></div><div><span>Tüm tanklar</span><b>${f(t.all * BBL_M3, 1)} m³</b></div>`;
+  $('lvTotals').innerHTML = totalsHtml(t, 1);
 }
 function parseCalTable(s) {
   return s.split(/\r?\n/).map(l => { l = l.trim(); if (!l) return null;
@@ -603,19 +715,24 @@ $('lvTanks').addEventListener('input', e => {
   if (lk === 'cm') { const v = num(i.value); c.cm = isFinite(v) ? v : 0; c.level = c.cm / CM_FT; }
   else if (lk === 'target') c.target = i.value;
   else if (lk === 'table') c.table = parseCalTable(i.value);
-  else if (lk === 'method') { c.method = i.value; save(); renderSeviye(); return; }
+  else if (lk === 'method') {
+    c.method = i.value;
+    if (c.method === 'step' && !isFinite(+c.f1)) { c.f1 = +c.factor || ''; c.b1 = 80; c.b2 = 115; if (!c.maxCm) c.maxCm = 225; }
+    save(); renderSeviye(); return;
+  }
+  else if (['f2', 'f3', 'suct'].includes(lk)) { const v = num(i.value); c[lk] = isFinite(v) ? v : ''; }
   else c[lk] = num(i.value);
   save();
-  const v = lvCells(c); ['bbl', 'm3', 'per', 'need', 'diff'].forEach(x => { const el = document.querySelector(`[data-o="${x}-${k}"]`); if (el) el.innerHTML = v[x]; });
-  renderLvTotals();
+  const v = lvCells(c); ['bbl', 'use', 'm3', 'per', 'need', 'diff'].forEach(x => { const el = document.querySelector(`[data-o="${x}-${k}"]`); if (el) el.innerHTML = v[x]; });
+  renderLvTotals(); renderBalance(true);
   if (lk === 'table') { const nt = i.closest('label').nextElementSibling; if (nt) nt.textContent = `${sortedTable(c).length} satır okundu. Tablodaki noktalar arası doğrusal hesaplanır.`; }
 });
 $('lvTanks').addEventListener('click', e => { const k = e.target.dataset.lvcfg; if (!k) return; lvOpen.has(k) ? lvOpen.delete(k) : lvOpen.add(k); renderSeviye(); });
 $('lvSave').onclick = () => {
   const w = W(); w.gauges = w.gauges || [];
   const t = tankTotals();
-  w.gauges.push({ t: new Date().toISOString(), totals: { active: t.active, reserve: t.reserve, trip: t.trip, all: t.all },
-    items: w.tanks.flatMap(tk => tk.comps.map(c => ({ tank: tk.name, comp: c.name, use: c.use, cm: round(cmOf(c), 1), bbl: round(compVol(c), 1) }))) });
+  w.gauges.push({ t: new Date().toISOString(), totals: { active: t.active, reserve: t.reserve, trip: t.trip, all: t.all, activeUse: t.activeUse },
+    items: w.tanks.flatMap(tk => tk.comps.map(c => ({ tank: tk.name, comp: c.name, use: c.use, cm: round(cmOf(c), 1), bbl: round(compVol(c), 1), usable: round(compUsable(c), 1) }))) });
   save(); renderLvHist(); toast('Seviye ölçümü kaydedildi');
 };
 function renderLvHist() {
@@ -754,54 +871,91 @@ function calcHazir() {
    AĞIRLAŞTIRMA / SEYRELTME / DİĞER HESAPLAR
    ========================================================= */
 let agirUnits = 0;
+const MAT_BAG = { '35': 1500, '22.5': 1000, '34.2': 1500, '41.7': 1500 };
+const matPpg = () => { let v = num($('a-mat').value); if (!isFinite(v)) { $('a-mat').value = '35'; v = 35; } return v < 10 ? v * 8.33 : v; };
 $('a-stock').onchange = () => { const s = W().stock.find(x => x.id === $('a-stock').value); W().vals['a-stock-id'] = $('a-stock').value; if (s) { $('a-sack').value = s.kg; W().vals['a-sack'] = String(s.kg); } save(); calcAll(); };
+$('a-mat').addEventListener('change', () => { const kg = MAT_BAG[$('a-mat').value]; if (kg && !$('a-stock').value) { $('a-sack').value = kg; W().vals['a-sack'] = String(kg); save(); calcAll(); } });
+$('a-mode').addEventListener('change', () => agirFields());
+function agirFields() {
+  const m = $('a-mode').value || 'target';
+  document.querySelectorAll('#t-agir [data-am]').forEach(l => l.hidden = !l.dataset.am.split(' ').includes(m));
+  $('a-vlbl').textContent = m === 'prep' ? '(bbl, bilgi için)' : '(bbl)';
+}
 $('a-use').onclick = () => {
   const id = $('a-stock').value; if (!id) { toast('Önce stok kalemini seç.'); return; }
   if (!(agirUnits > 0)) { toast('Hesaplanan miktar yok.'); return; }
   const s = W().stock.find(x => x.id === id);
   if (!confirm(`${s.name}: ${agirUnits} ${s.unit} stoktan düşülsün mü?`)) return;
-  stockUse(id, agirUnits, `Ağırlaştırma ${n('a-w1')} → ${n('a-w2')} ppg`); fillStockSelects(); toast('Stoktan düşüldü');
+  stockUse(id, agirUnits, `Ağırlaştırma ${$('a-w1').value} → ${$('a-w2').value} ${dLbl()}`); fillStockSelects(); toast('Stoktan düşüldü');
 };
 function calcAgir() {
-  const V = n('a-v'), w1 = n('a-w1'), w2 = n('a-w2'), sg = parseFloat($('a-mat').value), sack = n('a-sack');
-  const dm = 8.33 * sg, h = '<h3>Sonuç</h3>'; agirUnits = 0;
-  if (!(w2 > w1)) return $('r-agir').innerHTML = h + err('Hedef yoğunluk mevcut yoğunluktan büyük olmalı.');
-  if (w2 >= dm) return $('r-agir').innerHTML = h + err(`Hedef yoğunluk ağırlaştırıcının yoğunluğuna (${f(dm, 2)} ppg) ulaşamaz.`);
-  const lbbbl = 350 * sg * (w2 - w1) / (dm - w2), lb = lbbbl * V, kg = lb * LB_KG, inc = lb / (350 * sg);
-  agirUnits = Math.ceil(kg / sack);
-  const s = W().stock.find(x => x.id === $('a-stock').value);
-  $('r-agir').innerHTML = h + row('Gereken torba', f(agirUnits, 0), `× ${sack} kg`, true)
-    + (s ? row('Stokta', f(s.qty, 0), s.unit) + (+s.qty < agirUnits ? err('Stok yetersiz.') : '') : '')
-    + row('Toplam ağırlaştırıcı', f(kg / 1000, 2), 'ton') + row('', f(lb, 0), 'lb')
-    + row('Birim ilave', f(lbbbl, 1), 'lb/bbl') + row('', f(lbbbl * 2.853, 1), 'kg/m³')
-    + row('Hacim artışı', f(inc), 'bbl') + row('Son hacim', f(V + inc), 'bbl');
+  agirFields();
+  const mode = $('a-mode').value || 'target', dm = matPpg(), k = 42 * dm, sack = n('a-sack'), V = n('a-v'), w1 = nd('a-w1'), w2 = nd('a-w2'), N = n('a-n');
+  const s = W().stock.find(x => x.id === $('a-stock').value), mat = $('a-mat').selectedOptions[0] ? $('a-mat').selectedOptions[0].textContent.split(' (')[0] : 'Ağırlaştırıcı';
+  const stockRow = u => s ? row('Stokta', f(s.qty, 0), s.unit) + (+s.qty < u ? err('Stok yetersiz.') : '') : '';
+  const dRow = (lbl, ppg, big) => row(lbl, fd(ppg), dLbl(), big) + row('', isPcf() ? f(ppg, 2) : f(ppg * PCF, 1), isPcf() ? 'ppg' : 'lb/ft³');
+  agirUnits = 0; let o = '<h3>Sonuç</h3>';
+  if (!(w1 > 0)) return $('r-agir').innerHTML = o + err('Mevcut yoğunluğu gir.');
+  if (!(sack > 0)) return $('r-agir').innerHTML = o + err('Ambalaj ağırlığını gir.');
+  if (mode === 'target') {
+    if (!(w2 > w1)) return $('r-agir').innerHTML = o + err('Hedef yoğunluk mevcut yoğunluktan büyük olmalı.');
+    if (w2 >= dm) return $('r-agir').innerHTML = o + err(`Hedef yoğunluk ağırlaştırıcının yoğunluğuna (${fd(dm)} ${dLbl()}) ulaşamaz.`);
+    const lb = V * k * (w2 - w1) / (dm - w2), kg = lb * LB_KG, inc = lb / k, bags = kg / sack;
+    agirUnits = Math.ceil(bags - 1e-9);
+    o += row(`Gereken ${mat.toLocaleLowerCase('tr-TR')}`, f(bags, 2), `adet × ${f(sack, 0)} kg`, true) + row('Yukarı yuvarlanmış', f(agirUnits, 0), 'adet') + stockRow(agirUnits)
+      + row('Toplam malzeme', f(kg, 0), 'kg') + row('', f(lb, 0), 'lb')
+      + row('Birim ilave', f(lb / V, 1), 'lb/bbl') + row('', f(lb / V * 2.853, 1), 'kg/m³')
+      + '<div class="sp"></div>' + row('Hacim artışı', f(inc, 2), 'bbl') + row('Son hacim', f(V + inc, 1), 'bbl');
+  } else if (mode === 'bags') {
+    if (!(N > 0) || !(V > 0)) return $('r-agir').innerHTML = o + err('Ambalaj adedini ve çamur hacmini gir.');
+    const lb = N * sack / LB_KG, nw = (dm * lb + k * w1 * V) / (k * V + lb);
+    agirUnits = Math.ceil(N - 1e-9);
+    const per100 = (dm * sack / LB_KG + k * w1 * 100) / (k * 100 + sack / LB_KG) - w1;
+    o += dRow('Yeni yoğunluk', nw, true) + row('Artış', fd(nw - w1), dLbl()) + stockRow(agirUnits)
+      + row('Toplam malzeme', f(N * sack, 0), 'kg') + row('', f(lb, 0), 'lb')
+      + '<div class="sp"></div>' + row('Hacim artışı', f(lb / k, 2), 'bbl') + row('Son hacim', f(V + lb / k, 1), 'bbl')
+      + `<p class="note" style="color:#93A1AB">Pratik: 1 ambalaj 100 bbl çamuru yaklaşık ${fd(per100)} ${dLbl()} ağırlaştırır.</p>`;
+  } else {
+    if (!(N > 0)) return $('r-agir').innerHTML = o + err('Ambalaj adedini gir.');
+    if (!(w2 > w1)) return $('r-agir').innerHTML = o + err('Hedef yoğunluk mevcut yoğunluktan büyük olmalı.');
+    if (w2 >= dm) return $('r-agir').innerHTML = o + err(`Hedef yoğunluk ağırlaştırıcının yoğunluğuna (${fd(dm)} ${dLbl()}) ulaşamaz.`);
+    const lb = N * sack / LB_KG, base = lb * (dm - w2) / (k * (w2 - w1));
+    agirUnits = Math.ceil(N - 1e-9);
+    o += row('Ağırlaştırılabilecek çamur', f(base, 1), 'bbl', true) + row('', f(base * BBL_M3, 1), 'm³')
+      + row('Malzeme ilavesinden sonra', f(base + lb / k, 1), 'bbl') + stockRow(agirUnits)
+      + row('Kullanılan malzeme', f(N * sack, 0), 'kg')
+      + (V > 0 ? `<p class="note" style="color:#93A1AB">${f(V, 0)} bbl çamurun tamamını bu yoğunluğa çıkarmak için ${f(V * k * (w2 - w1) / (dm - w2) * LB_KG / sack, 2)} ambalaj gerekir.</p>` : '');
+  }
+  $('r-agir').innerHTML = o;
 }
+$('s-liq').addEventListener('change', () => { const v = $('s-liq').value; if (v) { $('s-dw').value = round(fromPpg(+v), isPcf() ? 2 : 2); W().vals['s-dw'] = $('s-dw').value; save(); calcAll(); } });
 function calcSeyr() {
-  const V = n('s-v'), w1 = n('s-w1'), w2 = n('s-w2'), dw = n('s-dw'), h = '<h3>Sonuç</h3>';
+  const V = n('s-v'), w1 = nd('s-w1'), w2 = nd('s-w2'), dw = nd('s-dw'), h = '<h3>Sonuç</h3>';
   if (!(w2 < w1)) return $('r-seyr').innerHTML = h + err('Hedef yoğunluk mevcut yoğunluktan küçük olmalı.');
   if (!(w2 > dw)) return $('r-seyr').innerHTML = h + err('Hedef yoğunluk eklenen sıvının yoğunluğundan büyük olmalı.');
-  const vw = V * (w1 - w2) / (w2 - dw);
-  $('r-seyr').innerHTML = h + row('Eklenecek sıvı', f(vw), 'bbl', true) + row('', f(vw * BBL_M3, 2), 'm³')
-    + row('Son hacim', f(V + vw), 'bbl') + row('Hacim artışı', f(vw / V * 100, 1), '%');
+  const vw = V * (w1 - w2) / (w2 - dw), chk = (w1 * V + dw * vw) / (V + vw);
+  const liq = Math.abs(dw - 8.33) < 0.05 ? 'Eklenecek su' : Math.abs(dw - 7) < 0.05 ? 'Eklenecek petrol' : 'Eklenecek sıvı';
+  $('r-seyr').innerHTML = h + row(liq, f(vw, 1), 'bbl', true) + row('', f(vw * BBL_M3, 2), 'm³')
+    + row('Son hacim', f(V + vw, 1), 'bbl') + row('Hacim artışı', f(vw / V * 100, 1), '%') + row('Kontrol: son yoğunluk', fd(chk), dLbl());
 }
 function calcHid() {
-  const mw = n('p-mw'), tvd = toFt(n('p-tvd')), apl = n('p-apl') || 0, pp = n('p-pp');
+  const mw = nd('p-mw'), tvd = toFt(n('p-tvd')), apl = n('p-apl') || 0, pp = n('p-pp');
   const p = 0.052 * mw * tvd, g = 0.052 * mw, ecd = mw + apl / (0.052 * tvd);
   let o = '<h3>Sonuç</h3>' + row('Hidrostatik basınç', f(p, 0), 'psi', true) + row('', f(p * PSI_BAR, 1), 'bar')
     + row('Basınç gradyanı', f(g, 3), 'psi/ft') + row('', f(g * M_FT * PSI_BAR, 4), 'bar/m')
-    + row('ECD', f(ecd, 2), 'ppg') + row('Dolaşımda dip basıncı', f(p + apl, 0), 'psi');
-  if (isFinite(pp) && pp > 0) { const emw = pp / (0.052 * tvd); o += row('Gözenek basıncı EMW', f(emw, 2), 'ppg') + row('Overbalance', f(p - pp, 0), 'psi') + row('', f(mw - emw, 2), 'ppg'); }
+    + row('ECD', fd(ecd), dLbl()) + row('Dolaşımda dip basıncı', f(p + apl, 0), 'psi');
+  if (isFinite(pp) && pp > 0) { const emw = pp / (0.052 * tvd); o += row('Gözenek basıncı EMW', fd(emw), dLbl()) + row('Overbalance', f(p - pp, 0), 'psi') + row('', fd(mw - emw), dLbl()); }
   $('r-hid').innerHTML = o;
 }
 function calcKill() {
-  const omw = n('w-omw'), tvd = toFt(n('w-tvd')), sidpp = n('w-sidpp'), sicp = n('w-sicp'), pit = n('w-pit'),
-    scr = n('w-scr'), kspm = n('w-spm'), sm = n('w-sm') || 0, shoe = toFt(n('w-shoe')), lot = n('w-lot');
+  const omw = nd('w-omw'), tvd = toFt(n('w-tvd')), sidpp = n('w-sidpp'), sicp = n('w-sicp'), pit = n('w-pit'),
+    scr = n('w-scr'), kspm = n('w-spm'), sm = nd('w-sm') || 0, shoe = toFt(n('w-shoe')), lot = nd('w-lot');
   const kmw = omw + sidpp / (0.052 * tvd) + sm, icp = sidpp + scr, fcp = scr * kmw / omw;
   const maasp = (lot - omw) * 0.052 * shoe, maaspNew = (lot - kmw) * 0.052 * shoe;
   const out = pumpRes.out, stb = out > 0 ? wellRes.pipe / out : NaN, btu = out > 0 ? wellRes.ann / out : NaN;
   const cap = wellRes.lastAnnCap, kh = cap > 0 ? pit / cap : NaN, kg = 0.052 * omw - (sicp - sidpp) / kh;
   let typ = '—'; if (isFinite(kg)) typ = kg < 0.25 ? 'Gaz' : kg <= 0.4 ? 'Yağ / gaz karışımı' : 'Su (tuzlu su)';
-  let o = '<h3>Kill çamuru</h3>' + row('Kill çamuru (KMW)', f(kmw, 2), 'ppg', true)
+  let o = '<h3>Kill çamuru</h3>' + row('Kill çamuru (KMW)', fd(kmw), dLbl(), true)
     + row('ICP', f(icp, 0), 'psi') + row('FCP', f(fcp, 0), 'psi')
     + row('MAASP (mevcut çamur)', f(maasp, 0), 'psi') + row('MAASP (kill çamuru)', f(maaspNew, 0), 'psi')
     + '<div class="sp"></div><h3>Kick</h3>' + row('Kick boyu (dip anülüs)', f(fromFt(kh), 0), unit()) + row('Kick gradyanı', f(kg, 3), 'psi/ft')
@@ -818,7 +972,7 @@ function calcKill() {
 }
 function calcCim() {
   const dh = n('c-dh'), od = n('c-od'), id = n('c-id'), prev = n('c-prev'), depth = toFt(n('c-depth')), pshoe = toFt(n('c-pshoe')),
-    toc = toFt(n('c-toc')), st = toFt(n('c-st')), ex = (n('c-ex') || 0) / 100, y = n('c-y'), w = n('c-w'), sk = n('c-sk'), dens = n('c-dens'), dmw = n('c-dmw');
+    toc = toFt(n('c-toc')), st = toFt(n('c-st')), ex = (n('c-ex') || 0) / 100, y = n('c-y'), w = n('c-w'), sk = n('c-sk'), dens = nd('c-dens'), dmw = nd('c-dmw');
   const h = '<h3>Bulamaç</h3>';
   if (!(depth > toc)) return $('r-cim').innerHTML = h + err('Çimento tepesi pabuç derinliğinden sığ olmalı.');
   const Loh = Math.max(0, depth - Math.max(toc, pshoe)), Lov = Math.max(0, Math.min(pshoe, depth) - toc);
@@ -830,23 +984,139 @@ function calcCim() {
     + '<div class="sp"></div><h3>Malzeme</h3>' + row('Çimento torbası', f(Math.ceil(sacks), 0), `× ${sk} lb`, true) + row('Toplam çimento', f(sacks * sk * LB_KG / 1000, 1), 'ton')
     + row('Karışım suyu', f(water), 'bbl') + row('', f(water * BBL_M3, 2), 'm³')
     + '<div class="sp"></div><h3>Deplasman</h3>' + row('Deplasman hacmi', f(disp), 'bbl', true) + row('Pompa stroku', f(out > 0 ? disp / out : NaN, 0), 'stk')
-    + row('Çimentolu kolon', f(fromFt(depth - toc), 0), unit()) + row('Pabuçta son hidrostatik', f(hp, 0), 'psi') + row('Pabuç EMW', f(hp / (0.052 * depth), 2), 'ppg');
+    + row('Çimentolu kolon', f(fromFt(depth - toc), 0), unit()) + row('Pabuçta son hidrostatik', f(hp, 0), 'psi') + row('Pabuç EMW', fd(hp / (0.052 * depth)), dLbl());
+}
+/* power-law dizi içi basınç kaybı (rapor / MI el kitabı) */
+function pipeLoss(id, L, q, mw, nn, K) {
+  if (!(id > 0) || !(L > 0) || !(q > 0)) return { dp: 0, v: 0, re: 0, reg: '—' };
+  const v = 24.48 * q / (id * id), mu = 100 * K * Math.pow(1.6 * v / id, nn - 1) * Math.pow((3 * nn + 1) / (4 * nn), nn);
+  const re = 15.467 * v * id * mw / mu, rec = 4270 - 1370 * nn, turb = re > rec;
+  const fr = turb ? ((Math.log10(nn) + 3.93) / 50) / Math.pow(re, (1.75 - Math.log10(nn)) / 7) : 16 / re;
+  return { dp: fr * v * v * mw * L / (92916 * id), v, re, reg: turb ? 'türbülanslı' : 'laminer' };
 }
 function calcHidr() {
-  const t6 = n('r-600'), t3 = n('r-300'), mw = n('r-mw'), qIn = n('r-q'), q = isFinite(qIn) && qIn > 0 ? qIn : pumpRes.gpm;
-  const pv = t6 - t3, yp = t3 - pv, av = t6 / 2, nn = 3.32 * Math.log10(t6 / t3), K = 510 * t3 / Math.pow(511, nn);
-  let tfa = 0;[[n('n1c'), n('n1s')], [n('n2c'), n('n2s')]].forEach(([c, s]) => { if (c > 0 && s > 0) tfa += c * Math.PI / 4 * (s / 32) ** 2; });
-  const dpb = tfa > 0 ? mw * q * q / (12031 * tfa * tfa) : NaN, hhp = dpb * q / 1714, vj = tfa > 0 ? 0.32086 * q / tfa : NaN;
-  const dh = n('r-dh'), od = n('r-od'), van = 24.51 * q / (dh * dh - od * od), hsi = hhp / (Math.PI / 4 * dh * dh), jif = 0.01823 * 0.95 * q * Math.sqrt(mw * dpb);
-  $('r-hidr').innerHTML = '<h3>Reoloji</h3>' + row('PV', f(pv, 0), 'cP', true) + row('YP', f(yp, 0), 'lb/100ft²', true)
-    + row('Görünür viskozite', f(av, 1), 'cP') + row('Akış indeksi n', f(nn, 3), '') + row('Tutarlılık K', f(K, 1), 'eq cP')
-    + '<div class="sp"></div><h3>Bit</h3>' + row('Kullanılan debi', f(q, 0), 'gpm') + row('TFA', f(tfa, 4), 'in²')
-    + row('Bit basınç kaybı', f(dpb, 0), 'psi', true) + row('Jet hızı', f(vj, 0), 'ft/s') + row('Bit hidrolik gücü', f(hhp, 0), 'HHP')
-    + row('HSI', f(hsi, 2), 'HHP/in²') + row('Jet çarpma kuvveti', f(jif, 0), 'lbf')
-    + '<div class="sp"></div><h3>Anülüs</h3>' + row('Anülüs hızı', f(van, 0), 'ft/dk') + row('', f(van / M_FT, 1), 'm/dk');
+  const t6 = n('r-600'), t3 = n('r-300'), t100 = n('r-100'), th3 = n('r-3'), mw = nd('r-mw'), qIn = n('r-q'), q = isFinite(qIn) && qIn > 0 ? qIn : pumpRes.gpm;
+  const spp = n('r-spp'), bit = n('r-bit'), surfL = +$('r-surf').value || 0, dc = n('r-dc') || 0.25, sgc = n('r-sgc') || 2.7;
+  const pv = t6 - t3, yp = t3 - pv, av = t6 / 2, nn = 3.32 * Math.log10(t6 / t3), K = 5.11 * t3 / Math.pow(511, nn);
+  let tfa = 0;[[n('n1c'), n('n1s')], [n('n2c'), n('n2s')]].forEach(([c, sz]) => { if (c > 0 && sz > 0) tfa += c * Math.PI / 4 * (sz / 32) ** 2; });
+  const dpb = tfa > 0 ? mw * q * q / (10858 * tfa * tfa) : NaN, hhp = dpb * q / 1714, vn = tfa > 0 ? q / (3.117 * tfa) : NaN;
+  const hsi = bit > 0 ? 1.2732 * hhp / (bit * bit) : NaN, impF = vn * q * mw / 1932, impA = bit > 0 ? 1.2732 * impF / (bit * bit) : NaN;
+  // dizi içi + yüzey
+  const secs = W().secs || [], okRheo = t6 > 0 && t3 > 0 && t6 > t3 && nn > 0;
+  let pipeTot = 0, pipeRows = '';
+  const surf = okRheo && surfL > 0 ? pipeLoss(3.826, surfL, q, mw, nn, K).dp : 0;
+  if (okRheo) secs.forEach((x, i) => { const r = pipeLoss(+x.id, +x.len, q, mw, nn, K); pipeTot += r.dp; pipeRows += row(`${i + 1}. ${esc(x.name || 'bölüm')} <span class="tag">${r.reg}</span>`, f(r.dp, 0), 'psi'); });
+  // anülüs hızları, anülüs basınç kaybı ve kesinti taşıma (θ100 / θ3 ile anülüs n, K)
+  const na = t100 > 0 && th3 > 0 ? 0.28518 * Math.log(t100 / th3) : NaN, Ka = t100 / Math.pow(170.3, na);
+  const nI = 3.322 * Math.log10((2 * pv + yp) / (pv + yp)), KI = Math.pow(511, 1 - nI) * (pv + yp);
+  let annRows = '', avMin = Infinity, teMin = Infinity, annTot = 0;
+  secs.forEach((x, i) => {
+    const dh = +x.dh, od = +x.od; if (!(dh > od) || !(x.len > 0)) return;
+    const va = 24.48 * q / (dh * dh - od * od); avMin = Math.min(avMin, va);
+    if (isFinite(na) && na > 0 && q > 0) { // MI: μea, NRe, f → ΔPa
+      const gap = dh - od, mue = 100 * Ka * Math.pow(2.4 * va / gap * (2 * na + 1) / (3 * na), na - 1), re = 15.467 * va * gap * mw / mue;
+      const fa = re < 3470 - 1370 * na ? 24 / re : ((Math.log10(na) + 3.93) / 50) / Math.pow(re, (1.75 - Math.log10(na)) / 7);
+      annTot += fa * va * va * mw * x.len / (92916 * gap);
+    }
+    let te = NaN;
+    if (isFinite(na) && na > 0) { const mua = 200 * Ka * (dh - od) / va * Math.pow((2.4 * va / (dh - od)) * ((2 * na + 1) / (3 * na)), na), vs = 175 * dc * Math.pow(Math.max(0, sgc * 8.34 - mw), 2 / 3) / Math.pow(mw * mua, 1 / 3); te = (1 - vs / va) * 100; teMin = Math.min(teMin, te); }
+    annRows += row(`${i + 1}. ${esc(x.name || 'bölüm')}`, `${f(va, 0)}${isFinite(te) ? ` <em>ft/dk</em> · %${f(te, 0)}` : ''}`, isFinite(te) ? 'taşıma' : 'ft/dk');
+  });
+  const cci = isFinite(avMin) ? KI * avMin * mw / 400000 : NaN;
+  let o = '<h3>Reoloji</h3>' + row('PV', f(pv, 0), 'cP', true) + row('YP', f(yp, 0), 'lb/100ft²', true)
+    + row('Görünür viskozite', f(av, 1), 'cP') + row('Akış indeksi n', f(nn, 3), '') + row('Tutarlılık K', f(K, 3), '')
+    + (isFinite(na) ? row('Anülüs n / K (θ100, θ3)', `${f(na, 3)} / ${f(Ka, 3)}`, '') : '')
+    + '<div class="sp"></div><h3>Matkap hidroliği</h3>' + row('Kullanılan debi', f(q, 0), 'gpm') + row('TFA', f(tfa, 4), 'in²')
+    + row('Bit basınç kaybı', f(dpb, 0), 'psi', true) + (spp > 0 ? row('', f(dpb / spp * 100, 1), '% sirk. basıncı') : '')
+    + row('Nozzle hızı', f(vn, 0), 'ft/s') + row('Bit hidrolik gücü', f(hhp, 0), 'HHP') + row('HSI', f(hsi, 2), 'HHP/in²')
+    + row('Darbe gücü', f(impF, 0), 'lbf') + row('', f(impA, 2), 'lbf/in²');
+  const depth = wellRes.depth, annOk = isFinite(na) && na > 0 && annTot > 0, ecd = depth > 0 && annOk ? mw + annTot / (0.052 * depth) : NaN;
+  const calcTot = surf + pipeTot + (isFinite(dpb) ? dpb : 0) + (annOk ? annTot : 0), rest = spp > 0 ? spp - calcTot : NaN;
+  if (okRheo) {
+    o += '<div class="sp"></div><h3>Basınç dağılımı</h3>' + (surfL ? row('Yüzey ekipmanı', f(surf, 0), 'psi') : '') + pipeRows + row('Dizi içi toplam', f(pipeTot, 0), 'psi')
+      + row('Bit', f(dpb, 0), 'psi') + (annOk ? row('Anülüs', f(annTot, 0), 'psi') : '') + row('Hesaplanan toplam', f(calcTot, 0), 'psi', true);
+    if (spp > 0) o += row('Ölçülen sirk. basıncı', f(spp, 0), 'psi') + row('Fark (motor, MWD, hesap dışı)', f(rest, 0), 'psi')
+      + (rest < 0 ? err('Hesaplanan kayıplar sirkülasyon basıncından büyük; debiyi, nozzle ve dizi bilgilerini kontrol et.') : '');
+    if (annOk && depth > 0) o += '<div class="sp"></div>' + row('ECD', fd(ecd), dLbl(), true) + row('', isPcf() ? f(ecd, 2) : f(ecd * PCF, 1), isPcf() ? 'ppg' : 'lb/ft³')
+      + row('Hesaptaki derinlik', f(fromFt(depth), 0), unit() + ' (düşey varsayıldı)');
+    else o += '<p class="note" style="color:#93A1AB">ECD için θ100 ve θ3 değerlerini, ayrıca Kuyu Hacmi bölümlerini gir.</p>';
+  }
+  if (annRows) o += '<div class="sp"></div><h3>Anülüs hızı ve taşıma oranı</h3>' + annRows
+    + row('En düşük anülüs hızı', f(avMin, 0), 'ft/dk') + (isFinite(teMin) && teMin < Infinity ? row('En düşük taşıma oranı', f(teMin, 0), '%', true) : '')
+    + row('CCI', f(cci, 2), cci >= 1 ? 'iyi temizlik' : 'yetersiz (<1)');
+  else o += '<p class="note" style="color:#93A1AB">Anülüs hızları için Kuyu Hacmi bölümlerini gir.</p>';
+  $('r-hidr').innerHTML = o;
 }
+/* =========================================================
+   KATI ANALİZİ (tuz düzeltmeli retort)
+   ========================================================= */
+function calcKati() {
+  const mw = nd('k-mw'), vw = n('k-water') || 0, vo = n('k-oil') || 0, vg = n('k-gly') || 0, kclw = n('k-kcl') || 0, cl = n('k-cl') || 0, ca = n('k-ca') || 0, th = n('k-th') || 0,
+    mbt = n('k-mbt') || 0, pf = n('k-pf') || 0, pm = n('k-pm'), hgs = n('k-hgs') || 4.2, lgs = n('k-lgs') || 2.6, so = n('k-sgo') || 0.84, sgg = n('k-sgg') || 1.09, bcec = n('k-bcec') || 65, dcec = n('k-dcec') || 0;
+  const h = '<h3>Sonuç</h3>';
+  if (!(mw > 0) || !(vw > 0)) return $('r-kati').innerHTML = h + err('Çamur ağırlığı ve retort su yüzdesini gir.');
+  const kclSG = kclw === 0 ? 1 : kclw <= 5 ? 0.9985 + 6.3 * kclw / 1000 : kclw <= 10 ? 0.997334 + 6.6 * kclw / 1000 : 0.9954 + 6.8 * kclw / 1000;
+  const kcl = 10000 * kclw * kclSG, clKcl = 0.47554 * kcl, mg = th > ca ? (th - ca) * 243 / 400 : 0;
+  const clCa = 1.769112 * ca, clMg = 2.91734 * mg, clNa = Math.max(0, cl - clKcl - clCa - clMg);
+  const check = cl > 0 && (clKcl > cl || clKcl + clCa > cl || clKcl + clCa + clMg > cl);
+  const nacl = 1.64846 * clNa, cacl2 = 2.7691 * ca, mgcl2 = 3.91734 * mg;
+  const rf = 1 + (6.45 * nacl + 5.845 * kcl + 7.6 * cacl2 + 7.5 * mgcl2) * 1e-7, vif = 1 / (rf - (kcl + nacl + cacl2 + mgcl2) * 1e-6);
+  const vwc = vif * vw, vs = 100 - vo - vg - vwc;
+  const avgSG = vs > 0 ? (0.12 * mw - rf * vwc / 100 - so * vo / 100 - sgg * vg / 100) / (vs / 100) : NaN;
+  const lg = (100 * rf + (hgs - rf) * vs - 12 * mw - (rf - so) * vo - (rf - sgg) * vg) / (hgs - lgs), hg = vs - lg;
+  const cecAvg = lg > 0 ? 7.69 * mbt / lg : NaN, bent = lg > 0 && mbt > 0 && bcec > dcec ? Math.max(0, lg * (cecAvg - dcec) / (bcec - dcec)) : NaN, ds = isFinite(bent) ? lg - bent : NaN;
+  const lime = isFinite(pm) && pm > 0 ? 0.26 * (pm - vw / 100 * pf) : NaN;
+  $('r-kati').innerHTML = h + row('Düzeltilmiş katı', f(vs, 2), '% hacim', true) + row('Ortalama katı SG', f(avgSG, 2), '')
+    + row('Hafif katı (LGS)', f(lg, 2), '% hacim') + row('', f(3.5 * lgs * lg, 1), 'ppb')
+    + row('Ağır katı (HGS)', f(hg, 2), '% hacim') + row('', f(3.5 * hgs * hg, 1), 'ppb')
+    + (isFinite(bent) ? row('Bentonit', f(bent, 2), '% hacim') + row('', f(9.1 * bent, 1), 'ppb') + row('Kesinti katısı', f(ds, 2), '% hacim') + row('', f(3.5 * lgs * ds, 1), 'ppb') : '')
+    + (lg < 0 || hg < 0 ? err('Negatif katı çıktı: retort, yoğunluk ve tuz değerlerini kontrol et.') : '')
+    + '<div class="sp"></div><h3>Filtrat</h3>' + row('Filtrat yoğunluğu', f(rf, 4), 'g/cm³') + row('Hacim düzeltme (VIF)', f(vif, 4), '') + row('Düzeltilmiş su', f(vwc, 2), '% hacim')
+    + row('KCl', f(kcl, 0), 'mg/L') + row('', f(3.5e-4 * kcl, 1), 'ppb') + row('NaCl', f(nacl, 0), 'mg/L') + row('', f(3.5e-4 * nacl, 1), 'ppb')
+    + row('Magnezyum', f(mg, 1), 'mg/L') + (isFinite(lime) ? row('Depo kireç', f(lime, 2), 'ppb') : '')
+    + (check ? err('Klorür, KCl ve sertlikten gelen klorürü karşılamıyor; değerleri kontrol et.') : '');
+}
+$('k-fill').onclick = () => {
+  const last = sortedReps().slice(-1)[0]; if (!last) { toast('Kayıtlı ölçüm yok.'); return; }
+  const map = { 'k-mw': 'mw', 'k-water': 'water', 'k-oil': 'oil', 'k-kcl': 'kcl', 'k-cl': 'cl', 'k-ca': 'ca', 'k-th': 'th', 'k-mbt': 'mbt', 'k-pf': 'pf', 'k-pm': 'pm' };
+  let c = 0; Object.entries(map).forEach(([id, k]) => { const v = last.v[k]; if (v != null && isFinite(v)) { $(id).value = k === 'mw' ? round(fromPpg(v), isPcf() ? 1 : 2) : v; W().vals[id] = $(id).value; c++; } });
+  save(); calcAll(); toast(c ? `${c} değer ${fmtDate(last.time)} ölçümünden alındı` : 'Son ölçümde bu değerler yok.');
+};
+/* =========================================================
+   GÜNLÜK HACİM DENGESİ
+   ========================================================= */
+function balNow() {
+  const w = W(), d = w.balDraft || {}, t = tankTotals(), hole = wellRes.pipe + wellRes.ann, last = (w.balances || []).slice(-1)[0];
+  const v = k => { const x = num(d[k]); return isFinite(x) ? x : 0; };
+  const start = d.start !== undefined && d.start !== '' && isFinite(num(d.start)) ? num(d.start) : last ? last.end : NaN;
+  const end = t.active + t.reserve + hole, loss = v('surf') + v('dump') + v('dh');
+  return { start, startAuto: !(d.start !== undefined && d.start !== '') && !!last, built: v('built'), surf: v('surf'), dump: v('dump'), dh: v('dh'), loss, hole, active: t.active, reserve: t.reserve, end,
+    expected: start + v('built') - loss, diff: end - (start + v('built') - loss) };
+}
+function renderBalance(light) {
+  if (!$('balOut')) return;
+  const w = W(), d = w.balDraft || {}, b = balNow();
+  if (!light) document.querySelectorAll('#balIn input').forEach(i => { if (document.activeElement !== i) i.value = d[i.dataset.bk] ?? (i.dataset.bk === 'start' ? '' : '0'); });
+  $('bal-start').placeholder = b.startAuto ? `${f(b.start, 1)} (son kayıt)` : 'ilk gün: elle gir';
+  const totDh = (w.balances || []).reduce((a, x) => a + (+x.dh || 0), 0) + b.dh;
+  $('balOut').innerHTML = `<div><span>Kuyu içi (dizili)</span><b>${f(b.hole, 1)} bbl</b></div><div><span>Aktif tanklar</span><b>${f(b.active, 1)} bbl</b></div><div><span>Rezerv tanklar</span><b>${f(b.reserve, 1)} bbl</b></div>`
+    + `<div><span>Son toplam</span><b>${f(b.end, 1)} bbl</b></div><div><span>Toplam kayıp</span><b>${f(b.loss, 1)} bbl</b></div><div><span>Beklenen</span><b>${f(b.expected, 1)} bbl</b></div>`
+    + `<div><span>Fark (ölçülen − beklenen)</span><b>${isFinite(b.diff) ? `<span class="chip ${Math.abs(b.diff) <= 5 ? 'ok' : 'hi'}">${b.diff >= 0 ? '+' : ''}${f(b.diff, 1)}</span>` : '—'}</b></div><div><span>Kümülatif kaçak</span><b>${f(totDh, 1)} bbl</b></div>`;
+  const hs = w.balances || [];
+  $('balHist').innerHTML = `<tr><th>Tarih</th><th class="n">Başlangıç</th><th class="n">Hazırlanan</th><th class="n">Yüzey</th><th class="n">Atılan</th><th class="n">Kaçak</th><th class="n">Son toplam</th><th class="n">Fark</th><th></th></tr>`
+    + (hs.length ? [...hs].map((x, i) => ({ x, i })).reverse().map(({ x, i }) => `<tr><td>${fmtDate(x.t)}</td><td class="n">${f(x.start, 1)}</td><td class="n">${f(x.built, 1)}</td><td class="n">${f(x.surf, 1)}</td><td class="n">${f(x.dump, 1)}</td><td class="n">${f(x.dh, 1)}</td><td class="n">${f(x.end, 1)}</td><td class="n">${f(x.diff, 1)}</td><td><button class="btn ghost" data-delb="${i}">Sil</button></td></tr>`).join('')
+      : '<tr><td colspan="9" style="padding:14px;color:var(--muted)">Kayıt yok.</td></tr>');
+}
+$('balIn').addEventListener('input', e => { const i = e.target; if (!i.dataset.bk) return; const w = W(); w.balDraft = w.balDraft || {}; w.balDraft[i.dataset.bk] = i.value; save(); renderBalance(true); });
+$('balSave').onclick = () => {
+  const w = W(), b = balNow(); if (!isFinite(b.start)) { toast('Başlangıç toplamını gir.'); return; }
+  w.balances = w.balances || [];
+  w.balances.push({ t: new Date().toISOString(), start: round(b.start, 1), built: b.built, surf: b.surf, dump: b.dump, dh: b.dh, hole: round(b.hole, 1), active: round(b.active, 1), reserve: round(b.reserve, 1), end: round(b.end, 1), diff: round(b.diff, 1) });
+  w.balDraft = {}; save(); renderBalance(); toast('Günlük hacim dengesi kaydedildi');
+};
+$('balHist').addEventListener('click', e => { const d = e.target.dataset.delb; if (d != null && confirm('Bu kayıt silinsin mi?')) { W().balances.splice(+d, 1); save(); renderBalance(); } });
 function calcTrip() {
-  const od = n('t-od'), id = n('t-id'), cas = n('t-cas'), sl = toFt(n('t-sl')), ns = n('t-n') || 0, mw = n('t-mw'),
+  const od = n('t-od'), id = n('t-id'), cas = n('t-cas'), sl = toFt(n('t-sl')), ns = n('t-n') || 0, mw = nd('t-mw'),
     wdp = n('t-wdp'), ldp = toFt(n('t-ldp')), wdc = n('t-wdc') || 0, ldc = toFt(n('t-ldc')) || 0, pull = n('t-pull'), str = n('t-str');
   const dry = (od * od - id * id) / 1029.4, wet = od * od / 1029.4, cc = cas * cas / 1029.4, fd = dry * sl, fw = wet * sl;
   const dropD = fd / (cc - dry), dropW = fw / (cc - dry), bf = (65.5 - mw) / 65.5, air = wdp * ldp + wdc * ldc, buoy = air * bf;
@@ -1038,13 +1308,17 @@ async function exportExcel(w, only) {
     add('Kuyu hacmi', [['Bölüm', 'Kuyu/muhafaza ID (in)', 'Boru OD (in)', 'Boru ID (in)', 'Uzunluk (ft)', 'Dizi içi (bbl)', 'Anülüs (bbl)'],
       ...w.secs.map(s => [s.name, s.dh, s.od, s.id, +(+s.len).toFixed(1), +((s.id ** 2) / 1029.4 * s.len).toFixed(2), +(((s.dh ** 2) - (s.od ** 2)) / 1029.4 * s.len).toFixed(2)])], [28, 12, 10, 10, 12, 12, 12]);
     const reps = [...w.reports].sort((a, b) => (a.time || '').localeCompare(b.time || ''));
-    add('Çamur ölçümleri', [['Tarih', 'Derinlik (ft)', 'Numune', ...PROPS.map(p => `${p.n}${p.u ? ' (' + p.u + ')' : ''}`), 'Not'],
-      ['Hedef (alt–üst)', '', '', ...PROPS.map(p => { const t = w.targets[p.k] || {}; return [t.lo ?? '', t.hi ?? ''].join('–'); }), ''],
-      ...reps.map(r => [fmtDate(r.time), r.depth ? +(+r.depth).toFixed(0) : '', r.src || '', ...PROPS.map(p => r.v[p.k] ?? ''), r.note || ''])], [16, 11, 12, ...PROPS.map(() => 11), 30]);
+    const ev = (p, v) => v == null || v === '' ? '' : p.dens ? +fromPpg(+v).toFixed(pD(p)) : v;
+    add('Çamur ölçümleri', [['Tarih', 'Derinlik (ft)', 'Numune', ...PROPS.map(p => `${p.n}${pU(p) ? ' (' + pU(p) + ')' : ''}`), 'Not'],
+      ['Hedef (alt–üst)', '', '', ...PROPS.map(p => { const t = w.targets[p.k] || {}; return [ev(p, t.lo), ev(p, t.hi)].join('–'); }), ''],
+      ...reps.map(r => [fmtDate(r.time), r.depth ? +(+r.depth).toFixed(0) : '', r.src || '', ...PROPS.map(p => ev(p, r.v[p.k])), r.note || ''])], [16, 11, 12, ...PROPS.map(() => 11), 30]);
     add('Stok', [['Kimyasal', 'Mevcut', 'Birim', 'kg/birim', 'Asgari', 'Durum'], ...w.stock.map(s => [s.name, +s.qty, s.unit, +s.kg, +s.min, +s.qty <= +s.min ? 'Sipariş ver' : 'Yeterli'])], [22, 10, 8, 10, 10, 12]);
     add('Stok hareketleri', [['Tarih', 'Kimyasal', 'İşlem', 'Miktar', 'Birim', 'Not'], ...w.stockLog.map(l => [fmtDate(l.t), l.item, l.kind, l.qty, l.unit, l.note])], [16, 20, 10, 10, 8, 30]);
-    add('Tanklar', [['Tank', 'Bölme', 'Kullanım', 'Şekil', 'Boy/çap (ft)', 'En (ft)', 'Yükseklik (ft)', 'Seviye (cm)', 'Yöntem', 'MW (ppg)', 'Hacim (bbl)'],
-      ...w.tanks.flatMap(t => t.comps.map(c => [t.name, c.name, USES[c.use], c.shape === 'cyl' ? 'Silindir' : 'Dikdörtgen', +(+c.L).toFixed(2), +(+c.W).toFixed(2), +(+c.H).toFixed(2), +cmOf(c).toFixed(1), METHODS[c.method || 'dim'], c.mw, +compVol(c).toFixed(1)]))], [16, 14, 10, 11, 11, 9, 12, 11, 9, 11]);
+    add('Tanklar', [['Tank', 'Bölme', 'Kullanım', 'Yöntem', 'Katsayılar', 'Seviye (cm)', 'Emiş (cm)', 'Hacim (bbl)', 'Emiş üstü (bbl)', `MW (${dLbl()})`],
+      ...w.tanks.flatMap(t => t.comps.map(c => [t.name, c.name, USES[c.use], METHODS[c.method || 'dim'], methodTxt(c), +cmOf(c).toFixed(1), suctCm(c), +compVol(c).toFixed(1), +compUsable(c).toFixed(1), +c.mw ? +fromPpg(+c.mw).toFixed(2) : '']))], [16, 14, 10, 24, 26, 11, 9, 11, 13, 10]);
+    const bs = w.balances || [];
+    if (bs.length) add('Hacim dengesi', [['Tarih', 'Başlangıç (bbl)', 'Hazırlanan', 'Yüzey kaybı', 'Atılan', 'Kaçak', 'Kuyu içi', 'Aktif', 'Rezerv', 'Son toplam', 'Fark'],
+      ...bs.map(x => [fmtDate(x.t), x.start, x.built, x.surf, x.dump, x.dh, x.hole, x.active, x.reserve, x.end, x.diff]), [], ['Toplam kaçak', '', '', '', '', bs.reduce((a, x) => a + (+x.dh || 0), 0)]], [16, 13, 11, 11, 9, 9, 10, 9, 9, 11, 8]);
     const gs = w.gauges || [];
     if (gs.length) add('Tank seviye ölçümleri', [['Tarih', 'Tank', 'Bölme', 'Kullanım', 'Seviye (cm)', 'Hacim (bbl)'],
       ...gs.flatMap(g => g.items.map(it => [fmtDate(g.t), it.tank, it.comp, USES[it.use] || '', it.cm, it.bbl])),
@@ -1060,7 +1334,7 @@ async function exportExcel(w, only) {
    ÇİZİM DÖNGÜSÜ
    ========================================================= */
 function calcAll() {
-  [calcHacim, calcPompa, calcAgir, calcSeyr, calcHid, calcKill, calcCim, calcHidr, calcTrip, calcHazir].forEach(c => { try { c(); } catch (e) { console.error(e); } });
+  [calcHacim, calcPompa, calcAgir, calcSeyr, calcHid, calcKill, calcCim, calcHidr, calcTrip, calcHazir, calcKati].forEach(c => { try { c(); } catch (e) { console.error(e); } });
 }
 function renderAll(full) {
   renderHeader();
@@ -1081,6 +1355,8 @@ function renderAll(full) {
 
 load();
 loadCalcInputs();
+setDUnit(dunit(), false);
+renderPropInputs();
 setUnit(unit(), false);
 showGroup(DB.group || 'kuyu');
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
