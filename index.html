@@ -13,51 +13,68 @@
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="icon" href="icon-192.png">
 <style>
-/* Layout: sticky header + scrollable module strip; each module = input card + dark readout (stacked on phone) */
+/* Layout: sticky header (well + sub-tabs), one module visible at a time, fixed bottom bar with 3 groups */
 :root{
   --bg:#E9ECEE; --panel:#F8F9FA; --ink:#17222B; --muted:#5A6873; --line:#C9D0D5;
   --accent:#C9561A; --accent-ink:#FFFFFF; --readout:#1E2A33; --readout-ink:#F2C14E; --field:#FFFFFF;
+  --ok:#2E7D4F; --ok-bg:#DCEFE3; --lo:#1F5FA8; --lo-bg:#DCE7F5; --hi:#B3361E; --hi-bg:#F6DED8;
+  --u-active:#C9561A; --u-reserve:#4C7A99; --u-trip:#7B6CA8; --u-settle:#8A7B5B; --u-other:#7D8B94;
   --f-display:"Avenir Next Condensed","Barlow Condensed","Roboto Condensed","Arial Narrow",sans-serif;
   --f-body:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,system-ui,sans-serif;
   --f-num:ui-monospace,"SF Mono",Menlo,"Roboto Mono",monospace;
+  --barH:60px;
   color-scheme:light;
 }
 @media (prefers-color-scheme:dark){:root{
   --bg:#12181D; --panel:#1B232A; --ink:#E4E9EC; --muted:#93A1AB; --line:#2E3A43;
-  --accent:#E8743A; --accent-ink:#12181D; --readout:#0B1014; --field:#141B20; color-scheme:dark}}
+  --accent:#E8743A; --accent-ink:#12181D; --readout:#0B1014; --field:#141B20;
+  --ok:#6FCF97; --ok-bg:#1C3527; --lo:#7FB2EE; --lo-bg:#1B2B40; --hi:#F08B73; --hi-bg:#40221C;
+  color-scheme:dark}}
+[hidden]{display:none!important}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0}
 body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.45;-webkit-text-size-adjust:100%}
 header{background:var(--readout);color:#E4E9EC;position:sticky;top:0;z-index:5;
-  padding-top:calc(12px + env(safe-area-inset-top,0px));padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
-.top{display:flex;align-items:center;justify-content:space-between;gap:12px;max-width:980px;margin:0 auto}
-h1{font-family:var(--f-display);font-weight:700;font-size:1.45rem;letter-spacing:.02em;margin:0;text-transform:uppercase}
-h1 span{color:var(--readout-ink)}
-.seg{display:inline-flex;border:1px solid #3A4852;border-radius:6px;overflow:hidden}
+  padding-top:calc(10px + env(safe-area-inset-top,0px));padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.top{display:flex;align-items:center;justify-content:space-between;gap:12px;max-width:1040px;margin:0 auto}
+.well{min-width:0}
+.well .lbl{font:600 .68rem var(--f-body);letter-spacing:.1em;text-transform:uppercase;color:#93A1AB}
+.well b{display:block;font:700 1.3rem var(--f-display);letter-spacing:.02em;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.well b span{color:var(--readout-ink)}
+.seg{display:inline-flex;border:1px solid #3A4852;border-radius:6px;overflow:hidden;flex:0 0 auto}
 .seg button{background:transparent;color:#C9D2D8;border:0;padding:6px 12px;font:600 .85rem var(--f-body);cursor:pointer}
 .seg button[aria-pressed="true"]{background:var(--readout-ink);color:#1E2A33}
-nav{display:flex;gap:2px;overflow-x:auto;max-width:980px;margin:8px auto 0;scrollbar-width:none;-webkit-overflow-scrolling:touch}
-nav::-webkit-scrollbar{display:none}
-nav button{flex:0 0 auto;background:transparent;border:0;color:#AEB9C0;font:600 .98rem var(--f-display);letter-spacing:.05em;text-transform:uppercase;padding:10px 11px;cursor:pointer;border-bottom:3px solid transparent}
-nav button[aria-selected="true"]{color:#fff;border-bottom-color:var(--accent)}
-button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-main{max-width:980px;margin:0 auto;padding-top:16px;padding-bottom:calc(40px + env(safe-area-inset-bottom,0px));
+#sub{display:flex;gap:2px;overflow-x:auto;max-width:1040px;margin:6px auto 0;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+#sub::-webkit-scrollbar{display:none}
+#sub button{flex:0 0 auto;background:transparent;border:0;color:#AEB9C0;font:600 .98rem var(--f-display);letter-spacing:.05em;text-transform:uppercase;padding:10px 11px;cursor:pointer;border-bottom:3px solid transparent}
+#sub button[aria-selected="true"]{color:#fff;border-bottom-color:var(--accent)}
+#bar{position:fixed;left:0;right:0;bottom:0;z-index:6;background:var(--readout);border-top:1px solid #2E3A43;display:flex;justify-content:center;
+  padding-bottom:env(safe-area-inset-bottom,0px);padding-left:max(8px,env(safe-area-inset-left,0px));padding-right:max(8px,env(safe-area-inset-right,0px))}
+#bar button{flex:1;max-width:220px;background:transparent;border:0;color:#93A1AB;height:var(--barH);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font:600 .74rem var(--f-body);letter-spacing:.06em;text-transform:uppercase;cursor:pointer}
+#bar button svg{width:24px;height:24px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+#bar button[aria-selected="true"]{color:var(--readout-ink)}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+main{max-width:1040px;margin:0 auto;padding-top:16px;padding-bottom:calc(var(--barH) + 40px + env(safe-area-inset-bottom,0px));
   padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
 section.tool{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:16px;align-items:start}
-@media (max-width:720px){section.tool{grid-template-columns:minmax(0,1fr)}}
+section.page{display:grid;gap:16px}
+@media (max-width:760px){section.tool{grid-template-columns:minmax(0,1fr)} section.tool>.readout{order:-1}}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:16px;min-width:0}
 h2{font-family:var(--f-display);font-size:1.3rem;text-transform:uppercase;letter-spacing:.04em;margin:0 0 4px}
 h4{font:700 .8rem var(--f-display);letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin:16px 0 8px}
-.hint{color:var(--muted);font-size:.86rem;margin:0 0 14px;max-width:62ch}
+.hint{color:var(--muted);font-size:.86rem;margin:0 0 14px;max-width:66ch}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px 12px}
+.grid.tight{grid-template-columns:repeat(auto-fit,minmax(100px,1fr))}
 label{display:flex;flex-direction:column;gap:4px;font-size:.76rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
 label small{text-transform:none;letter-spacing:0;font-weight:400}
-input,select{font:500 16px var(--f-num);background:var(--field);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:9px 10px;width:100%;min-width:0;font-variant-numeric:tabular-nums}
-input[type=text]{font-family:var(--f-body)}
-.readout{background:var(--readout);color:#DDE4E8;border-radius:8px;padding:16px;min-width:0;position:sticky;top:calc(env(safe-area-inset-top,0px) + 108px)}
-@media (max-width:720px){.readout{position:static}}
+label.chk{flex-direction:row;align-items:center;gap:8px;text-transform:none;letter-spacing:0;font-size:.9rem;color:var(--ink);font-weight:500}
+label.chk input{width:auto}
+input,select,textarea{font:500 16px var(--f-num);background:var(--field);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:9px 10px;width:100%;min-width:0;font-variant-numeric:tabular-nums}
+input[type=text],input[type=date],input[type=datetime-local],select,textarea{font-family:var(--f-body)}
+textarea{min-height:90px;resize:vertical}
+.readout{background:var(--readout);color:#DDE4E8;border-radius:8px;padding:16px;min-width:0;position:sticky;top:calc(env(safe-area-inset-top,0px) + 120px)}
+@media (max-width:760px){.readout{position:static}}
 .readout h3{font:700 .8rem var(--f-display);letter-spacing:.12em;text-transform:uppercase;color:#93A1AB;margin:0 0 8px}
-.readout h3+.row{padding-top:2px}
 .row{display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:7px 0;border-bottom:1px dashed #33414B}
 .row:last-child{border-bottom:0}
 .row .k{font-size:.86rem;color:#AEB9C0}
@@ -65,55 +82,128 @@ input[type=text]{font-family:var(--f-body)}
 .row.big .v{font-size:1.45rem;color:var(--readout-ink)}
 .row .v em{font-style:normal;font-size:.74rem;color:#93A1AB;margin-left:4px;font-family:var(--f-body)}
 .sp{height:12px}
-.tag{display:inline-block;font:600 .75rem var(--f-body);padding:2px 8px;border-radius:99px;background:#33414B;color:#F2C14E}
+.tag{display:inline-block;font:600 .75rem var(--f-body);padding:2px 8px;border-radius:99px;background:#33414B;color:#F2C14E;white-space:nowrap}
+.chip{display:inline-block;font:600 .74rem var(--f-body);padding:2px 8px;border-radius:99px;white-space:nowrap}
+.chip.ok{background:var(--ok-bg);color:var(--ok)} .chip.lo{background:var(--lo-bg);color:var(--lo)} .chip.hi{background:var(--hi-bg);color:var(--hi)} .chip.na{background:var(--bg);color:var(--muted)}
 .err{color:#F07A62;font-size:.86rem;margin-top:6px}
-table.sch{width:100%;border-collapse:collapse;font:500 .9rem var(--f-num);font-variant-numeric:tabular-nums}
-table.sch th{font:600 .72rem var(--f-body);text-transform:uppercase;letter-spacing:.05em;color:#93A1AB;text-align:right;padding:4px 2px;border-bottom:1px solid #33414B}
-table.sch td{text-align:right;padding:5px 2px;border-bottom:1px dashed #2A3740;color:#F2F5F7}
-table.sch th:first-child,table.sch td:first-child{text-align:left}
+.card .err{color:var(--hi)}
+.note{font-size:.86rem;color:var(--muted);margin-top:8px}
+.btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.btn{background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:10px 14px;font:600 .92rem var(--f-body);cursor:pointer}
+.btn.sec{background:transparent;color:var(--ink);border:1px solid var(--line)}
+.btn.ghost{background:transparent;color:var(--muted);border:1px solid var(--line);padding:6px 10px;font-size:.8rem}
+.btn.danger{background:transparent;color:var(--hi);border:1px solid var(--hi)}
+.btn:disabled{opacity:.45}
+.formula{margin-top:14px;font:400 .76rem var(--f-num);color:var(--muted);border-top:1px solid var(--line);padding-top:10px;overflow-x:auto}
+.formula div{white-space:nowrap}
 .sec{border:1px solid var(--line);border-radius:6px;padding:12px;display:grid;gap:10px;background:var(--bg)}
 .sec-h{display:flex;justify-content:space-between;align-items:center;gap:8px}
 .sec-h b{font-family:var(--f-display);text-transform:uppercase;letter-spacing:.05em}
 .secs{display:grid;gap:10px}
-.btn{background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:10px 14px;font:600 .92rem var(--f-body);cursor:pointer}
-.btn.ghost{background:transparent;color:var(--muted);border:1px solid var(--line);padding:6px 10px;font-size:.8rem}
-.formula{margin-top:14px;font:400 .76rem var(--f-num);color:var(--muted);border-top:1px solid var(--line);padding-top:10px;overflow-x:auto}
-.formula div{white-space:nowrap}
+/* tables */
+.tw{overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--line);border-radius:6px}
+table.t{border-collapse:collapse;width:100%;font-size:.88rem}
+table.t th{font:600 .7rem var(--f-body);text-transform:uppercase;letter-spacing:.05em;color:var(--muted);text-align:left;padding:8px;background:var(--bg);border-bottom:1px solid var(--line);white-space:nowrap;position:sticky;top:0}
+table.t td{padding:6px 8px;border-bottom:1px solid var(--line);white-space:nowrap;font-variant-numeric:tabular-nums}
+table.t td.n,table.t th.n{text-align:right;font-family:var(--f-num)}
+table.t tr:last-child td{border-bottom:0}
+table.t td input{padding:5px 6px;font-size:15px;min-width:80px}
+table.t td.c-ok{background:var(--ok-bg);color:var(--ok)} table.t td.c-lo{background:var(--lo-bg);color:var(--lo)} table.t td.c-hi{background:var(--hi-bg);color:var(--hi)}
+table.t tr.flag td{background:var(--hi-bg)}
+table.sch{width:100%;border-collapse:collapse;font:500 .9rem var(--f-num);font-variant-numeric:tabular-nums}
+table.sch th{font:600 .72rem var(--f-body);text-transform:uppercase;letter-spacing:.05em;color:#93A1AB;text-align:right;padding:4px 2px;border-bottom:1px solid #33414B}
+table.sch td{text-align:right;padding:5px 2px;border-bottom:1px dashed #2A3740;color:#F2F5F7}
+table.sch th:first-child,table.sch td:first-child{text-align:left}
+/* mud status cards */
+.props{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
+.prop{border:1px solid var(--line);border-radius:6px;padding:8px 10px;background:var(--field);display:grid;gap:2px;cursor:pointer;text-align:left;color:var(--ink);font:inherit}
+.prop[aria-pressed="true"]{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.prop .pn{font-size:.72rem;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
+.prop .pv{font:600 1.2rem var(--f-num)}
+.prop .pr{font-size:.74rem;color:var(--muted);display:flex;justify-content:space-between;gap:6px;align-items:center}
+.prop.lo{border-left:4px solid var(--lo)} .prop.hi{border-left:4px solid var(--hi)} .prop.ok{border-left:4px solid var(--ok)}
+.chart svg{width:100%;height:auto;display:block}
+/* tanks */
+.tank-svg{display:flex;flex-wrap:wrap;gap:10px 18px}
+.tank-svg svg{display:block;max-width:100%;height:auto}
+.legend{display:flex;flex-wrap:wrap;gap:12px;font-size:.8rem;color:var(--muted);margin-top:8px}
+.legend i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+.totals{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-top:12px}
+.totals div{background:var(--bg);border-radius:6px;padding:8px 10px}
+.totals span{display:block;font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:600}
+.totals b{font:600 1.15rem var(--f-num)}
+.drop{border:2px dashed var(--line);border-radius:8px;padding:18px;text-align:center;display:grid;gap:8px;justify-items:center}
+.drop input{max-width:320px}
+.banner{background:var(--hi-bg);color:var(--hi);border-radius:6px;padding:10px 12px;font-size:.9rem;margin-bottom:12px}
+.wells{display:grid;gap:8px}
+.wellrow{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;border:1px solid var(--line);border-radius:6px;padding:10px 12px;background:var(--field)}
+.wellrow b{font-family:var(--f-display);font-size:1.05rem;text-transform:uppercase;letter-spacing:.03em}
+.wellrow .meta{font-size:.8rem;color:var(--muted)}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(var(--barH) + 16px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:8px;font-size:.9rem;z-index:20;box-shadow:0 6px 20px rgba(0,0,0,.25);max-width:90vw}
 footer{color:var(--muted);font-size:.8rem;margin-top:22px;max-width:70ch}
 </style>
 </head>
 <body>
 <header>
   <div class="top">
-    <h1>Sondaj <span>Hesap Cebi</span></h1>
+    <div class="well"><span class="lbl">Aktif kuyu</span><b id="hdrWell">—</b></div>
     <span class="seg" role="group" aria-label="Uzunluk birimi">
       <button id="u-ft" aria-pressed="true">ft</button><button id="u-m" aria-pressed="false">m</button>
     </span>
   </div>
-  <nav role="tablist" id="tabs">
-    <button role="tab" data-t="hacim" aria-selected="true">Kuyu Hacmi</button>
-    <button role="tab" data-t="agir">Ağırlaştırma</button>
-    <button role="tab" data-t="seyr">Seyreltme</button>
-    <button role="tab" data-t="kim">Kimyasal</button>
-    <button role="tab" data-t="hid">Basınç</button>
-    <button role="tab" data-t="pompa">Pompa</button>
-    <button role="tab" data-t="kill">Kill Sheet</button>
-    <button role="tab" data-t="cim">Çimento</button>
-    <button role="tab" data-t="hidr">Hidrolik</button>
-    <button role="tab" data-t="trip">Tripping</button>
-  </nav>
+  <nav id="sub" role="tablist" aria-label="Modüller"></nav>
 </header>
 
 <main>
-<!-- KUYU HACMİ -->
-<section class="tool" id="t-hacim">
+<!-- ================= KUYU ================= -->
+<section class="page" id="t-kuyu" hidden>
+  <div class="card">
+    <h2>Kuyu bilgisi</h2>
+    <p class="hint">Tüm veriler (hacimler, ölçümler, tanklar, stok, tally) bu kuyuya kaydedilir. İş bitince kuyuyu tamamla; kayıtlar arşivde kalır ve Excel olarak alınabilir.</p>
+    <div id="doneBanner" class="banner" hidden>Bu kuyu tamamlandı olarak işaretli. Görüntüleyip düzeltebilirsin.</div>
+    <div class="grid">
+      <label>Kuyu adı<input id="w-name" type="text"></label>
+      <label>Saha<input id="w-field" type="text"></label>
+      <label>Kule / rig<input id="w-rig" type="text"></label>
+      <label>Operatör<input id="w-op" type="text"></label>
+      <label>Başlangıç<input id="w-start" type="date"></label>
+      <label>Güncel derinlik <small class="lu">(ft)</small><input id="w-depth" type="text" inputmode="decimal"></label>
+    </div>
+    <div class="btns">
+      <button class="btn" id="btnExcel">Excel rapor indir</button>
+      <button class="btn sec" id="btnFinish">Kuyuyu tamamla</button>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Kuyular ve arşiv</h2>
+    <div class="wells" id="wellList"></div>
+    <div class="btns"><button class="btn sec" id="btnNewWell">+ Yeni kuyu</button></div>
+    <div id="newWellBox" class="sec" style="margin-top:12px" hidden>
+      <label>Yeni kuyu adı<input id="nw-name" type="text" placeholder="Örn. KZL-12"></label>
+      <label class="chk"><input id="nw-carry" type="checkbox" checked> Kimyasal stoğunu ve tankları yeni kuyuya taşı</label>
+      <label class="chk"><input id="nw-secs" type="checkbox"> Kuyu hacmi bölümlerini kopyala</label>
+      <div class="btns"><button class="btn" id="nwCreate">Oluştur</button><button class="btn sec" id="nwCancel">Vazgeç</button></div>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Yedekleme</h2>
+    <p class="hint">Veriler bu telefonda saklanır. Telefon değişirse veya uygulama silinirse kaybolmaması için ara sıra yedek dosyası al ve Dosyalar'a ya da Drive'a kaydet.</p>
+    <div class="btns">
+      <button class="btn" id="btnBackup">Yedek al (.json)</button>
+      <label class="btn sec" style="display:inline-flex;flex-direction:row;font-size:.92rem;text-transform:none;letter-spacing:0;color:var(--ink)">Yedeği geri yükle<input id="restoreFile" type="file" accept=".json,application/json" hidden></label>
+    </div>
+    <p class="note" id="lastBackup"></p>
+  </div>
+</section>
+
+<section class="tool" id="t-hacim" hidden>
   <div class="card">
     <h2>Kuyu ve anülüs hacmi</h2>
-    <p class="hint">Her bölüm için kuyu/muhafaza iç çapını, borunun dış ve iç çapını ve uzunluğu gir. Muhafaza, açık kuyu, HWDP ve DC'yi ayrı bölüm olarak ekle. Bu hacimler pompa, kill sheet ve hidrolik sekmelerinde kullanılır.</p>
+    <p class="hint">Bölümleri <b>yukarıdan aşağıya</b> sırayla gir: muhafaza, açık kuyu, HWDP, DC. Bu hacimler dolaşım, kill sheet ve hidrolik hesaplarında kullanılır.</p>
     <div class="secs" id="secs"></div>
     <div class="grid" style="margin-top:12px;align-items:end">
       <button class="btn" id="addSec">+ Bölüm ekle</button>
-      <label>Yüzey hattı / tanklar <small>(bbl)</small><input id="h-surf" type="number" inputmode="decimal" value="0"></label>
+      <label>Yüzey hattı <small>(bbl)</small><input id="h-surf" type="text" inputmode="decimal" value="0"></label>
     </div>
     <div class="formula">
       <div>Kapasite (bbl/ft) = ID² / 1029.4</div>
@@ -124,474 +214,327 @@ footer{color:var(--muted);font-size:.8rem;margin-top:22px;max-width:70ch}
   <div class="readout" id="r-hacim"></div>
 </section>
 
-<!-- AĞIRLAŞTIRMA -->
+<section class="page" id="t-tally" hidden>
+  <div class="card">
+    <h2>Tally (boru listesi)</h2>
+    <p class="hint">Tally dosyanı (Excel, CSV veya PDF) seç. Uygulama boru uzunluğu sütunlarını, joint numaralarını ve birimi kendisi bulur. Yan yana bloklar halinde yazılmış tally'ler de okunur. Taranmış (fotoğraf) PDF'ler okunamaz.</p>
+    <div class="drop">
+      <input id="tallyFile" type="file" accept=".xlsx,.xls,.csv,.pdf,application/pdf">
+      <span class="note" id="tallyStatus">Dosya seçilmedi</span>
+    </div>
+    <details style="margin-top:12px">
+      <summary style="cursor:pointer;color:var(--muted);font-size:.9rem">Veya uzunlukları yapıştır</summary>
+      <textarea id="tallyPaste" placeholder="31.25&#10;30.98&#10;31.40 ..."></textarea>
+      <div class="btns"><button class="btn sec" id="tallyPasteBtn">Listeye çevir</button></div>
+    </details>
+  </div>
+  <section class="tool" style="display:grid">
+    <div class="card">
+      <h4 style="margin-top:0">Ayarlar</h4>
+      <div class="grid">
+        <label>Tally birimi<select id="tl-unit"><option value="ft">ft</option><option value="m">m</option></select></label>
+        <label>Kuyudaki <span lang="en">joint</span> sayısı<input id="tl-in" type="text" inputmode="numeric" value="0"></label>
+        <label>BHA uzunluğu <small class="tlu">(ft)</small><input id="tl-bha" type="text" inputmode="decimal" value="0"></label>
+        <label>RKB / masa yüksekliği <small class="tlu">(ft)</small><input id="tl-kb" type="text" inputmode="decimal" value="0"></label>
+      </div>
+      <h4><span lang="en">Joint</span> listesi</h4>
+      <div class="tw" style="max-height:420px;overflow:auto"><table class="t" id="tallyTable"></table></div>
+      <div class="btns">
+        <button class="btn sec" id="tallyAdd">+ <span lang="en">Joint</span> ekle</button>
+        <button class="btn sec" id="tallyXls">Excel'e aktar</button>
+        <button class="btn danger" id="tallyClear">Listeyi temizle</button>
+      </div>
+    </div>
+    <div class="readout" id="r-tally"></div>
+  </section>
+</section>
+
+<!-- ================= ÇAMUR ================= -->
+<section class="page" id="t-olcum" hidden>
+  <div class="card">
+    <h2>Güncel çamur durumu</h2>
+    <p class="hint" id="olcumWhen">Henüz ölçüm yok.</p>
+    <div class="props" id="propCards"></div>
+    <div class="legend"><span><span class="chip ok">aralıkta</span></span><span><span class="chip lo">düşük</span></span><span><span class="chip hi">yüksek</span></span><span>Bir kutuya dokununca grafiği gösterilir.</span></div>
+  </div>
+  <div class="card chart">
+    <h2 id="chartTitle">Trend</h2>
+    <div id="trend"></div>
+  </div>
+  <div class="card">
+    <h2 id="olcumFormTitle">Yeni ölçüm</h2>
+    <div class="grid">
+      <label>Tarih / saat<input id="o-time" type="datetime-local"></label>
+      <label>Derinlik <small class="lu">(ft)</small><input id="o-depth" type="text" inputmode="decimal"></label>
+      <label>Numune yeri<select id="o-src"><option>Akış hattı</option><option>Aktif tank</option><option>Emiş tankı</option><option>Rezerv</option></select></label>
+    </div>
+    <h4>Özellikler</h4>
+    <div class="grid tight" id="o-props"></div>
+    <label style="margin-top:10px">Not<input id="o-note" type="text" placeholder="Yapılan işlem, gözlem…"></label>
+    <div class="btns">
+      <button class="btn" id="o-save">Ölçümü kaydet</button>
+      <button class="btn sec" id="o-cancel" hidden>Düzenlemeyi iptal et</button>
+      <button class="btn ghost" id="o-tgtBtn">Hedef aralıklarını düzenle</button>
+    </div>
+    <div id="o-tgt" class="sec" style="margin-top:12px" hidden>
+      <p class="hint" style="margin:0">Programdaki (olması gereken) alt ve üst değerleri gir. Boş bırakılan sınır kontrol edilmez.</p>
+      <div class="tw"><table class="t" id="tgtTable"></table></div>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Ölçüm geçmişi</h2>
+    <p class="hint">Aralık dışındaki değerler renkli gösterilir. Satıra dokunarak düzenleyebilirsin.</p>
+    <div class="tw"><table class="t" id="histTable"></table></div>
+  </div>
+</section>
+
+<section class="page" id="t-tank" hidden>
+  <div class="card">
+    <h2>Tank şeması</h2>
+    <div class="tank-svg" id="tankSvg"></div>
+    <div class="legend">
+      <span><i style="background:var(--u-active)"></i>Aktif</span><span><i style="background:var(--u-reserve)"></i>Rezerv</span>
+      <span><i style="background:var(--u-trip)"></i>Trip</span><span><i style="background:var(--u-settle)"></i>Çökeltme / kum</span><span><i style="background:var(--u-other)"></i>Diğer</span>
+    </div>
+    <div class="totals" id="tankTotals"></div>
+  </div>
+  <div class="card">
+    <h2>Tanklar ve bölmeler</h2>
+    <p class="hint">Her tank için bölmeleri gir. Ölçüler ve seviye seçili uzunluk biriminde (<span class="lu2">ft</span>). Seviyeyi her vardiya güncelle; hacimler ve aktif sistem toplamı kendiliğinden hesaplanır.</p>
+    <div class="secs" id="tankEdit"></div>
+    <div class="btns"><button class="btn" id="addTank">+ Tank ekle</button></div>
+  </div>
+</section>
+
+<section class="page" id="t-stok" hidden>
+  <div class="card">
+    <h2>Kimyasal stoğu</h2>
+    <p class="hint">Giriş ve kullanımları buradan kaydet. Hazırlama ve ağırlaştırma ekranındaki "Stoktan düş" düğmeleri de bu listeyi günceller.</p>
+    <div class="tw"><table class="t" id="stockTable"></table></div>
+    <div class="btns"><button class="btn" id="addStock">+ Kimyasal ekle</button></div>
+    <div id="stockNew" class="sec" style="margin-top:12px" hidden>
+      <div class="grid">
+        <label>Ad<input id="sn-name" type="text" placeholder="Örn. PAC-LV"></label>
+        <label>Birim<select id="sn-unit"><option>torba</option><option>varil</option><option>kova</option><option>bidon</option><option>kg</option><option>ton</option><option>litre</option></select></label>
+        <label>Birim ağırlık <small>(kg)</small><input id="sn-kg" type="text" inputmode="decimal" value="25"></label>
+        <label>Mevcut miktar<input id="sn-qty" type="text" inputmode="decimal" value="0"></label>
+        <label>Asgari seviye<input id="sn-min" type="text" inputmode="decimal" value="0"></label>
+      </div>
+      <div class="btns"><button class="btn" id="snSave">Kaydet</button><button class="btn sec" id="snCancel">Vazgeç</button></div>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Stok hareketleri</h2>
+    <div class="tw" style="max-height:380px;overflow:auto"><table class="t" id="stockLog"></table></div>
+  </div>
+</section>
+
+<section class="tool" id="t-hazir" hidden>
+  <div class="card">
+    <h2>Çamur hazırlama ve ilave</h2>
+    <p class="hint">Yeni çamur yaparken veya mevcut sisteme ilave ederken her kimyasal için gereken miktarı hesaplar. Kimyasalları stok listesinden seçersen torba ağırlığı otomatik gelir ve stok yeterliliği kontrol edilir.</p>
+    <div class="grid">
+      <label>İşlem<select id="z-mode"><option value="new">Yeni çamur hazırlama</option><option value="add">Mevcut çamura ilave</option></select></label>
+      <label>Hacim <small>(bbl)</small><input id="z-vol" type="text" inputmode="decimal" value="300"></label>
+      <label>Konsantrasyon birimi<select id="z-unit"><option value="ppb">ppb (lb/bbl)</option><option value="kgm3">kg/m³</option></select></label>
+      <label>Tanktan al<select id="z-tank"><option value="">— elle gir —</option></select></label>
+    </div>
+    <h4>Kimyasallar</h4>
+    <div class="secs" id="z-rows"></div>
+    <div class="btns"><button class="btn sec" id="z-add">+ Kimyasal satırı</button></div>
+    <div class="formula"><div>Miktar (lb) = (Hedef − Mevcut) ppb × Hacim (bbl) · 1 ppb = 2.853 kg/m³</div></div>
+  </div>
+  <div class="readout" id="r-hazir"></div>
+</section>
+
 <section class="tool" id="t-agir" hidden>
   <div class="card">
     <h2>Çamur ağırlaştırma</h2>
     <p class="hint">Mevcut çamuru hedef yoğunluğa çıkarmak için gereken ağırlaştırıcı ve hacim artışı.</p>
     <div class="grid">
-      <label>Mevcut hacim <small>(bbl)</small><input id="a-v" type="number" inputmode="decimal" value="800"></label>
-      <label>Mevcut yoğunluk <small>(ppg)</small><input id="a-w1" type="number" inputmode="decimal" value="10.2"></label>
-      <label>Hedef yoğunluk <small>(ppg)</small><input id="a-w2" type="number" inputmode="decimal" value="11.0"></label>
+      <label>Mevcut hacim <small>(bbl)</small><input id="a-v" type="text" inputmode="decimal" value="800"></label>
+      <label>Mevcut yoğunluk <small>(ppg)</small><input id="a-w1" type="text" inputmode="decimal" value="10.2"></label>
+      <label>Hedef yoğunluk <small>(ppg)</small><input id="a-w2" type="text" inputmode="decimal" value="11.0"></label>
       <label>Ağırlaştırıcı<select id="a-mat">
         <option value="4.2">Barit (SG 4.20)</option>
         <option value="4.1">Barit API (SG 4.10)</option>
         <option value="2.7">Kalsit CaCO₃ (SG 2.70)</option>
         <option value="5.0">Hematit (SG 5.00)</option>
       </select></label>
-      <label>Torba ağırlığı <small>(kg)</small><input id="a-sack" type="number" inputmode="decimal" value="50"></label>
+      <label>Torba ağırlığı <small>(kg)</small><input id="a-sack" type="text" inputmode="decimal" value="50"></label>
+      <label>Stok kalemi<select id="a-stock"></select></label>
     </div>
+    <div class="btns"><button class="btn" id="a-use">Stoktan düş</button></div>
     <div class="formula">
       <div>Ağırlaştırıcı (lb/bbl) = 350·SG·(W2 − W1) / (8.33·SG − W2)</div>
-      <div>Barit için ≈ 1470·(W2 − W1)/(35 − W2)</div>
       <div>Hacim artışı (bbl) = lb / (350·SG)</div>
     </div>
   </div>
   <div class="readout" id="r-agir"></div>
 </section>
 
-<!-- SEYRELTME -->
 <section class="tool" id="t-seyr" hidden>
   <div class="card">
     <h2>Seyreltme</h2>
     <p class="hint">Yoğunluğu düşürmek için eklenecek sıvı hacmi. Baz yağ için sıvı yoğunluğunu değiştir (dizel ≈ 7.0 ppg).</p>
     <div class="grid">
-      <label>Mevcut hacim <small>(bbl)</small><input id="s-v" type="number" inputmode="decimal" value="600"></label>
-      <label>Mevcut yoğunluk <small>(ppg)</small><input id="s-w1" type="number" inputmode="decimal" value="12.0"></label>
-      <label>Hedef yoğunluk <small>(ppg)</small><input id="s-w2" type="number" inputmode="decimal" value="11.2"></label>
-      <label>Eklenecek sıvı <small>(ppg)</small><input id="s-dw" type="number" inputmode="decimal" value="8.33"></label>
+      <label>Mevcut hacim <small>(bbl)</small><input id="s-v" type="text" inputmode="decimal" value="600"></label>
+      <label>Mevcut yoğunluk <small>(ppg)</small><input id="s-w1" type="text" inputmode="decimal" value="12.0"></label>
+      <label>Hedef yoğunluk <small>(ppg)</small><input id="s-w2" type="text" inputmode="decimal" value="11.2"></label>
+      <label>Eklenecek sıvı <small>(ppg)</small><input id="s-dw" type="text" inputmode="decimal" value="8.33"></label>
     </div>
     <div class="formula"><div>Vsıvı = V1·(W1 − W2) / (W2 − Dsıvı)</div></div>
   </div>
   <div class="readout" id="r-seyr"></div>
 </section>
 
-<!-- KİMYASAL -->
-<section class="tool" id="t-kim" hidden>
-  <div class="card">
-    <h2>Kimyasal ilavesi</h2>
-    <p class="hint">Hedef konsantrasyona göre torba ve toplam ağırlık. Mevcut konsantrasyon biliniyorsa yalnızca farkı hesaplar.</p>
-    <div class="grid">
-      <label>Kimyasal adı<input id="k-name" type="text" value="Bentonit"></label>
-      <label>Sistem hacmi <small>(bbl)</small><input id="k-v" type="number" inputmode="decimal" value="500"></label>
-      <label>Birim<select id="k-unit"><option value="ppb">ppb (lb/bbl)</option><option value="kgm3">kg/m³</option></select></label>
-      <label>Hedef konsantrasyon<input id="k-c2" type="number" inputmode="decimal" value="20"></label>
-      <label>Mevcut konsantrasyon<input id="k-c1" type="number" inputmode="decimal" value="0"></label>
-      <label>Torba ağırlığı <small>(kg)</small><input id="k-sack" type="number" inputmode="decimal" value="25"></label>
-    </div>
-    <div class="formula">
-      <div>Miktar (lb) = (C2 − C1) ppb × V (bbl)</div>
-      <div>1 ppb = 2.853 kg/m³ · 1 bbl = 0.159 m³</div>
-    </div>
-  </div>
-  <div class="readout" id="r-kim"></div>
-</section>
-
-<!-- BASINÇ -->
-<section class="tool" id="t-hid" hidden>
-  <div class="card">
-    <h2>Hidrostatik basınç ve ECD</h2>
-    <p class="hint">Derinlik gerçek düşey derinliktir (TVD).</p>
-    <div class="grid">
-      <label>Çamur ağırlığı <small>(ppg)</small><input id="p-mw" type="number" inputmode="decimal" value="10.5"></label>
-      <label>TVD <small class="lu">(ft)</small><input id="p-tvd" type="number" inputmode="decimal" value="9500"></label>
-      <label>Anülüs basınç kaybı <small>(psi)</small><input id="p-apl" type="number" inputmode="decimal" value="250"></label>
-      <label>Gözenek basıncı <small>(psi, isteğe bağlı)</small><input id="p-pp" type="number" inputmode="decimal" value="4600"></label>
-    </div>
-    <div class="formula">
-      <div>P (psi) = 0.052 × MW × TVD</div>
-      <div>ECD = MW + APL / (0.052 × TVD)</div>
-      <div>Eşdeğer ağırlık (EMW) = P / (0.052 × TVD)</div>
-    </div>
-  </div>
-  <div class="readout" id="r-hid"></div>
-</section>
-
-<!-- POMPA -->
+<!-- ================= HESAP ================= -->
 <section class="tool" id="t-pompa" hidden>
   <div class="card">
-    <h2>Pompa debisi ve dolaşım</h2>
-    <p class="hint">Hacimler Kuyu Hacmi sekmesinden gelir.</p>
+    <h2>Pompa ve dolaşım süresi</h2>
+    <p class="hint">Kuyu hacmi bölümlerinden ve pompa bilgilerinden çamurun dipten yüzeye kaç strokta ve kaç dakikada geleceğini hesaplar.</p>
     <div class="grid">
       <label>Pompa tipi<select id="m-type"><option value="tri">Triplex</option><option value="du">Duplex</option></select></label>
-      <label>Gömlek çapı <small>(in)</small><input id="m-id" type="number" inputmode="decimal" value="6.5"></label>
-      <label>Strok boyu <small>(in)</small><input id="m-l" type="number" inputmode="decimal" value="12"></label>
-      <label>Rod çapı <small>(in, duplex)</small><input id="m-rod" type="number" inputmode="decimal" value="2.5"></label>
-      <label>Verim <small>(%)</small><input id="m-eff" type="number" inputmode="decimal" value="95"></label>
-      <label>Hız <small>(SPM)</small><input id="m-spm" type="number" inputmode="decimal" value="100"></label>
+      <label>Çalışan pompa <small>(adet)</small><input id="m-np" type="text" inputmode="numeric" value="1"></label>
+      <label>Gömlek çapı <small>(in)</small><input id="m-id" type="text" inputmode="decimal" value="6.5"></label>
+      <label>Strok boyu <small>(in)</small><input id="m-l" type="text" inputmode="decimal" value="12"></label>
+      <label>Rod çapı <small>(in, duplex)</small><input id="m-rod" type="text" inputmode="decimal" value="2.5"></label>
+      <label>Verim <small>(%)</small><input id="m-eff" type="text" inputmode="decimal" value="95"></label>
+      <label>Pompa başına hız <small>(SPM)</small><input id="m-spm" type="text" inputmode="decimal" value="100"></label>
+      <label>Strok hacmi elle <small>(bbl/stk, boş: hesapla)</small><input id="m-man" type="text" inputmode="decimal" placeholder="hesapla"></label>
+      <label>Numune derinliği <small class="lu">(ft, boş: dip)</small><input id="m-sd" type="text" inputmode="decimal" placeholder="dip"></label>
     </div>
     <div class="formula">
       <div>Triplex (bbl/stk) = 0.000243 × ID² × L × verim</div>
       <div>Duplex (bbl/stk) = 0.000162 × L × (2·ID² − rod²) × verim</div>
+      <div>Lag süresi (dk) = anülüs hacmi (numune üstü) / (bbl/stk × SPM × pompa)</div>
     </div>
   </div>
   <div class="readout" id="r-pompa"></div>
 </section>
 
-<!-- KILL SHEET -->
-<section class="tool" id="t-kill" hidden>
+<section class="tool" id="t-hid" hidden>
   <div class="card">
-    <h2>Kill sheet (Driller's / Wait &amp; Weight)</h2>
-    <p class="hint">Dizi hacmi Kuyu Hacmi'nden, pompa çıkışı Pompa sekmesinden gelir. SCR, yavaş pompa hızındaki dolaşım basıncıdır.</p>
+    <h2>Hidrostatik basınç ve ECD</h2>
+    <p class="hint">Derinlik gerçek düşey derinliktir (TVD).</p>
     <div class="grid">
-      <label>Mevcut çamur <small>(ppg)</small><input id="w-omw" type="number" inputmode="decimal" value="10.5"></label>
-      <label>Kuyu TVD <small class="lu">(ft)</small><input id="w-tvd" type="number" inputmode="decimal" value="9500"></label>
-      <label>SIDPP <small>(psi)</small><input id="w-sidpp" type="number" inputmode="decimal" value="400"></label>
-      <label>SICP <small>(psi)</small><input id="w-sicp" type="number" inputmode="decimal" value="600"></label>
-      <label>Pit kazancı <small>(bbl)</small><input id="w-pit" type="number" inputmode="decimal" value="15"></label>
-      <label>SCR basıncı <small>(psi)</small><input id="w-scr" type="number" inputmode="decimal" value="450"></label>
-      <label>Kill hızı <small>(SPM)</small><input id="w-spm" type="number" inputmode="decimal" value="30"></label>
-      <label>Emniyet payı <small>(ppg)</small><input id="w-sm" type="number" inputmode="decimal" value="0"></label>
-      <label>Pabuç TVD <small class="lu">(ft)</small><input id="w-shoe" type="number" inputmode="decimal" value="6000"></label>
-      <label>LOT / FIT <small>(EMW ppg)</small><input id="w-lot" type="number" inputmode="decimal" value="14.5"></label>
+      <label>Çamur ağırlığı <small>(ppg)</small><input id="p-mw" type="text" inputmode="decimal" value="10.5"></label>
+      <label>TVD <small class="lu">(ft)</small><input id="p-tvd" type="text" inputmode="decimal" value="9500"></label>
+      <label>Anülüs basınç kaybı <small>(psi)</small><input id="p-apl" type="text" inputmode="decimal" value="250"></label>
+      <label>Gözenek basıncı <small>(psi)</small><input id="p-pp" type="text" inputmode="decimal" value="4600"></label>
     </div>
     <div class="formula">
-      <div>KMW = OMW + SIDPP / (0.052 × TVD)</div>
-      <div>ICP = SIDPP + SCR · FCP = SCR × KMW / OMW</div>
+      <div>P (psi) = 0.052 × MW × TVD · ECD = MW + APL / (0.052 × TVD)</div>
+    </div>
+  </div>
+  <div class="readout" id="r-hid"></div>
+</section>
+
+<section class="tool" id="t-kill" hidden>
+  <div class="card">
+    <h2>Kill sheet</h2>
+    <p class="hint">Dizi hacmi Kuyu Hacmi'nden, pompa çıkışı Dolaşım sekmesinden gelir. SCR, yavaş pompa hızındaki dolaşım basıncıdır.</p>
+    <div class="grid">
+      <label>Mevcut çamur <small>(ppg)</small><input id="w-omw" type="text" inputmode="decimal" value="10.5"></label>
+      <label>Kuyu TVD <small class="lu">(ft)</small><input id="w-tvd" type="text" inputmode="decimal" value="9500"></label>
+      <label>SIDPP <small>(psi)</small><input id="w-sidpp" type="text" inputmode="decimal" value="400"></label>
+      <label>SICP <small>(psi)</small><input id="w-sicp" type="text" inputmode="decimal" value="600"></label>
+      <label>Pit kazancı <small>(bbl)</small><input id="w-pit" type="text" inputmode="decimal" value="15"></label>
+      <label>SCR basıncı <small>(psi)</small><input id="w-scr" type="text" inputmode="decimal" value="450"></label>
+      <label>Kill hızı <small>(SPM)</small><input id="w-spm" type="text" inputmode="decimal" value="30"></label>
+      <label>Emniyet payı <small>(ppg)</small><input id="w-sm" type="text" inputmode="decimal" value="0"></label>
+      <label>Pabuç TVD <small class="lu">(ft)</small><input id="w-shoe" type="text" inputmode="decimal" value="6000"></label>
+      <label>LOT / FIT <small>(EMW ppg)</small><input id="w-lot" type="text" inputmode="decimal" value="14.5"></label>
+    </div>
+    <div class="formula">
+      <div>KMW = OMW + SIDPP / (0.052 × TVD) · ICP = SIDPP + SCR · FCP = SCR × KMW / OMW</div>
       <div>MAASP = (LOT − OMW) × 0.052 × Pabuç TVD</div>
-      <div>Kick gradyanı = 0.052·OMW − (SICP − SIDPP) / Kick boyu</div>
     </div>
   </div>
   <div class="readout" id="r-kill"></div>
 </section>
 
-<!-- ÇİMENTO -->
 <section class="tool" id="t-cim" hidden>
   <div class="card">
     <h2>Çimentolama</h2>
-    <p class="hint">Muhafaza çimentosu için bulamaç hacmi, torba sayısı, karışım suyu ve deplasman. Fazlalık yalnızca açık kuyu kısmına uygulanır.</p>
-    <h4>Kuyu ve muhafaza</h4>
+    <p class="hint">Bulamaç hacmi, torba sayısı, karışım suyu ve deplasman. Fazlalık yalnızca açık kuyu kısmına uygulanır.</p>
     <div class="grid">
-      <label>Açık kuyu çapı <small>(in)</small><input id="c-dh" type="number" inputmode="decimal" value="8.5"></label>
-      <label>Muhafaza OD <small>(in)</small><input id="c-od" type="number" inputmode="decimal" value="7"></label>
-      <label>Muhafaza ID <small>(in)</small><input id="c-id" type="number" inputmode="decimal" value="6.276"></label>
-      <label>Önceki muhafaza ID <small>(in)</small><input id="c-prev" type="number" inputmode="decimal" value="8.681"></label>
-      <label>Pabuç derinliği <small class="lu">(ft)</small><input id="c-depth" type="number" inputmode="decimal" value="9500"></label>
-      <label>Önceki pabuç <small class="lu">(ft)</small><input id="c-pshoe" type="number" inputmode="decimal" value="6000"></label>
-      <label>Çimento tepesi (TOC) <small class="lu">(ft)</small><input id="c-toc" type="number" inputmode="decimal" value="5500"></label>
-      <label>Shoe track <small class="lu">(ft)</small><input id="c-st" type="number" inputmode="decimal" value="80"></label>
-      <label>Açık kuyu fazlalığı <small>(%)</small><input id="c-ex" type="number" inputmode="decimal" value="20"></label>
-    </div>
-    <h4>Bulamaç</h4>
-    <div class="grid">
-      <label>Verim (yield) <small>(ft³/torba)</small><input id="c-y" type="number" inputmode="decimal" value="1.15"></label>
-      <label>Karışım suyu <small>(gal/torba)</small><input id="c-w" type="number" inputmode="decimal" value="5.0"></label>
-      <label>Torba ağırlığı <small>(lb)</small><input id="c-sk" type="number" inputmode="decimal" value="94"></label>
-      <label>Bulamaç yoğunluğu <small>(ppg)</small><input id="c-dens" type="number" inputmode="decimal" value="15.8"></label>
-      <label>Deplasman çamuru <small>(ppg)</small><input id="c-dmw" type="number" inputmode="decimal" value="10.5"></label>
-    </div>
-    <div class="formula">
-      <div>Açık kuyu = (Dh² − OD²)/1029.4 × L × (1 + fazlalık)</div>
-      <div>Bindirme = (IDönceki² − OD²)/1029.4 × L</div>
-      <div>Torba = bbl × 5.615 / yield</div>
-      <div>Deplasman = ID²/1029.4 × (pabuç − shoe track)</div>
+      <label>Açık kuyu çapı <small>(in)</small><input id="c-dh" type="text" inputmode="decimal" value="8.5"></label>
+      <label>Muhafaza OD <small>(in)</small><input id="c-od" type="text" inputmode="decimal" value="7"></label>
+      <label>Muhafaza ID <small>(in)</small><input id="c-id" type="text" inputmode="decimal" value="6.276"></label>
+      <label>Önceki muhafaza ID <small>(in)</small><input id="c-prev" type="text" inputmode="decimal" value="8.681"></label>
+      <label>Pabuç derinliği <small class="lu">(ft)</small><input id="c-depth" type="text" inputmode="decimal" value="9500"></label>
+      <label>Önceki pabuç <small class="lu">(ft)</small><input id="c-pshoe" type="text" inputmode="decimal" value="6000"></label>
+      <label>Çimento tepesi <small class="lu">(ft)</small><input id="c-toc" type="text" inputmode="decimal" value="5500"></label>
+      <label>Shoe track <small class="lu">(ft)</small><input id="c-st" type="text" inputmode="decimal" value="80"></label>
+      <label>Açık kuyu fazlalığı <small>(%)</small><input id="c-ex" type="text" inputmode="decimal" value="20"></label>
+      <label>Verim (yield) <small>(ft³/torba)</small><input id="c-y" type="text" inputmode="decimal" value="1.15"></label>
+      <label>Karışım suyu <small>(gal/torba)</small><input id="c-w" type="text" inputmode="decimal" value="5.0"></label>
+      <label>Torba ağırlığı <small>(lb)</small><input id="c-sk" type="text" inputmode="decimal" value="94"></label>
+      <label>Bulamaç yoğunluğu <small>(ppg)</small><input id="c-dens" type="text" inputmode="decimal" value="15.8"></label>
+      <label>Deplasman çamuru <small>(ppg)</small><input id="c-dmw" type="text" inputmode="decimal" value="10.5"></label>
     </div>
   </div>
   <div class="readout" id="r-cim"></div>
 </section>
 
-<!-- HİDROLİK -->
 <section class="tool" id="t-hidr" hidden>
   <div class="card">
     <h2>Reoloji ve bit hidroliği</h2>
-    <p class="hint">Fann okumalarından PV/YP, nozzle'lardan TFA ve bit basınç kaybı. Debi boş bırakılırsa Pompa sekmesindeki değer kullanılır.</p>
-    <h4>Viskozimetre</h4>
+    <p class="hint">Debi boş bırakılırsa Dolaşım sekmesindeki değer kullanılır.</p>
     <div class="grid">
-      <label>θ600<input id="r-600" type="number" inputmode="decimal" value="52"></label>
-      <label>θ300<input id="r-300" type="number" inputmode="decimal" value="32"></label>
-      <label>Çamur ağırlığı <small>(ppg)</small><input id="r-mw" type="number" inputmode="decimal" value="10.5"></label>
-      <label>Debi <small>(gpm, boş: pompa)</small><input id="r-q" type="number" inputmode="decimal" value="" placeholder="pompadan"></label>
-    </div>
-    <h4>Nozzle'lar (1/32 in)</h4>
-    <div class="grid">
-      <label>Adet A<input id="n1c" type="number" inputmode="numeric" value="3"></label>
-      <label>Boyut A<input id="n1s" type="number" inputmode="numeric" value="12"></label>
-      <label>Adet B<input id="n2c" type="number" inputmode="numeric" value="2"></label>
-      <label>Boyut B<input id="n2s" type="number" inputmode="numeric" value="11"></label>
-    </div>
-    <h4>Anülüs hızı için</h4>
-    <div class="grid">
-      <label>Kuyu çapı <small>(in)</small><input id="r-dh" type="number" inputmode="decimal" value="8.5"></label>
-      <label>Boru OD <small>(in)</small><input id="r-od" type="number" inputmode="decimal" value="5"></label>
+      <label>θ600<input id="r-600" type="text" inputmode="decimal" value="52"></label>
+      <label>θ300<input id="r-300" type="text" inputmode="decimal" value="32"></label>
+      <label>Çamur ağırlığı <small>(ppg)</small><input id="r-mw" type="text" inputmode="decimal" value="10.5"></label>
+      <label>Debi <small>(gpm)</small><input id="r-q" type="text" inputmode="decimal" placeholder="pompadan"></label>
+      <label>Nozzle adet A<input id="n1c" type="text" inputmode="numeric" value="3"></label>
+      <label>Boyut A <small>(1/32")</small><input id="n1s" type="text" inputmode="numeric" value="12"></label>
+      <label>Nozzle adet B<input id="n2c" type="text" inputmode="numeric" value="2"></label>
+      <label>Boyut B <small>(1/32")</small><input id="n2s" type="text" inputmode="numeric" value="11"></label>
+      <label>Kuyu çapı <small>(in)</small><input id="r-dh" type="text" inputmode="decimal" value="8.5"></label>
+      <label>Boru OD <small>(in)</small><input id="r-od" type="text" inputmode="decimal" value="5"></label>
     </div>
     <div class="formula">
-      <div>PV = θ600 − θ300 · YP = θ300 − PV</div>
-      <div>n = 3.32·log(θ600/θ300) · K = 510·θ300 / 511ⁿ</div>
-      <div>ΔPbit = MW·Q² / (12031·TFA²) · HHP = ΔP·Q/1714</div>
-      <div>Vjet = 0.3208·Q/TFA · Van = 24.51·Q/(Dh² − OD²)</div>
+      <div>PV = θ600 − θ300 · YP = θ300 − PV · ΔPbit = MW·Q² / (12031·TFA²)</div>
     </div>
   </div>
   <div class="readout" id="r-hidr"></div>
 </section>
 
-<!-- TRIPPING -->
 <section class="tool" id="t-trip" hidden>
   <div class="card">
-    <h2>Tripping, ağırlık ve serbest nokta</h2>
-    <p class="hint">Dizi çekerken doldurma hacmi ve seviye düşüşü, kaldırma kuvvetiyle dizi ağırlığı, sıkışmada serbest nokta tahmini.</p>
-    <h4>Dizi ve kuyu</h4>
+    <h2>Tripping ve dizi ağırlığı</h2>
     <div class="grid">
-      <label>Boru OD <small>(in)</small><input id="t-od" type="number" inputmode="decimal" value="5"></label>
-      <label>Boru ID <small>(in)</small><input id="t-id" type="number" inputmode="decimal" value="4.276"></label>
-      <label>Muhafaza ID <small>(in)</small><input id="t-cas" type="number" inputmode="decimal" value="8.681"></label>
-      <label>Stand boyu <small class="lu">(ft)</small><input id="t-sl" type="number" inputmode="decimal" value="93"></label>
-      <label>Çekilen stand <small>(adet)</small><input id="t-n" type="number" inputmode="numeric" value="5"></label>
-      <label>Çamur ağırlığı <small>(ppg)</small><input id="t-mw" type="number" inputmode="decimal" value="10.5"></label>
-    </div>
-    <h4>Dizi ağırlığı</h4>
-    <div class="grid">
-      <label>DP birim ağırlık <small>(lb/ft)</small><input id="t-wdp" type="number" inputmode="decimal" value="21.9"></label>
-      <label>DP uzunluğu <small class="lu">(ft)</small><input id="t-ldp" type="number" inputmode="decimal" value="8700"></label>
-      <label>DC birim ağırlık <small>(lb/ft)</small><input id="t-wdc" type="number" inputmode="decimal" value="91"></label>
-      <label>DC uzunluğu <small class="lu">(ft)</small><input id="t-ldc" type="number" inputmode="decimal" value="800"></label>
-    </div>
-    <h4>Serbest nokta (sıkışma)</h4>
-    <div class="grid">
-      <label>Fazladan çekme <small>(lb)</small><input id="t-pull" type="number" inputmode="decimal" value="40000"></label>
-      <label>Ölçülen uzama <small>(in)</small><input id="t-str" type="number" inputmode="decimal" value="18"></label>
+      <label>Boru OD <small>(in)</small><input id="t-od" type="text" inputmode="decimal" value="5"></label>
+      <label>Boru ID <small>(in)</small><input id="t-id" type="text" inputmode="decimal" value="4.276"></label>
+      <label>Muhafaza ID <small>(in)</small><input id="t-cas" type="text" inputmode="decimal" value="8.681"></label>
+      <label>Stand boyu <small class="lu">(ft)</small><input id="t-sl" type="text" inputmode="decimal" value="93"></label>
+      <label>Çekilen stand<input id="t-n" type="text" inputmode="numeric" value="5"></label>
+      <label>Çamur ağırlığı <small>(ppg)</small><input id="t-mw" type="text" inputmode="decimal" value="10.5"></label>
+      <label>DP ağırlık <small>(lb/ft)</small><input id="t-wdp" type="text" inputmode="decimal" value="21.9"></label>
+      <label>DP uzunluğu <small class="lu">(ft)</small><input id="t-ldp" type="text" inputmode="decimal" value="8700"></label>
+      <label>DC ağırlık <small>(lb/ft)</small><input id="t-wdc" type="text" inputmode="decimal" value="91"></label>
+      <label>DC uzunluğu <small class="lu">(ft)</small><input id="t-ldc" type="text" inputmode="decimal" value="800"></label>
+      <label>Fazladan çekme <small>(lb)</small><input id="t-pull" type="text" inputmode="decimal" value="40000"></label>
+      <label>Ölçülen uzama <small>(in)</small><input id="t-str" type="text" inputmode="decimal" value="18"></label>
     </div>
     <div class="formula">
-      <div>Kuru: deplasman = (OD² − ID²)/1029.4 · Islak: (OD²)/1029.4</div>
-      <div>Seviye düşüşü = hacim / (muhafaza kap. − çelik dep.)</div>
-      <div>BF = (65.5 − MW) / 65.5</div>
+      <div>Seviye düşüşü = hacim / (muhafaza kap. − çelik dep.) · BF = (65.5 − MW)/65.5</div>
       <div>Serbest nokta (ft) = 735294 × uzama × Wdp / çekme</div>
     </div>
   </div>
   <div class="readout" id="r-trip"></div>
 </section>
 
-<footer>Petrol sahası birimleri: bbl, ppg, psi, inç. Sonuçlar standart formüllerle hesaplanır; kritik operasyonlarda şirket prosedürü ile doğrula. Girdiler cihazda saklanır, uygulama internetsiz çalışır.</footer>
+<footer>Petrol sahası birimleri: bbl, ppg, psi, inç. Sonuçlar standart formüllerle hesaplanır; kritik operasyonlarda şirket prosedürü ile doğrula. Veriler bu cihazda saklanır, uygulama internetsiz çalışır.</footer>
 </main>
 
-<script>
-const $=id=>document.getElementById(id);
-const BBL_M3=0.158987, LB_KG=0.453592, M_FT=3.28084, PSI_BAR=0.0689476;
-let lenUnit='ft';
-const store={get(k,d){try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v)}catch(e){return d}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
-const n=id=>parseFloat($(id).value);
-const toFt=x=>lenUnit==='m'?x*M_FT:x;
-const fromFt=x=>lenUnit==='m'?x/M_FT:x;
-const f=(x,d=1)=>isFinite(x)?x.toLocaleString('tr-TR',{minimumFractionDigits:d,maximumFractionDigits:d}):'—';
-const row=(k,v,u,big)=>`<div class="row${big?' big':''}"><span class="k">${k}</span><span class="v">${v}<em>${u||''}</em></span></div>`;
-const err=m=>`<div class="err">${m}</div>`;
-const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-
-/* shared results */
-let wellRes={pipe:0,ann:0,disp:0,lastAnnCap:0}, pumpRes={out:0,gpm:0};
-
-/* ---------- KUYU HACMİ ---------- */
-let secs=store.get('secs',[
-  {name:'Muhafaza 9⅝" / DP 5"',dh:8.681,od:5,id:4.276,len:6000},
-  {name:'Açık kuyu 8½" / DP 5"',dh:8.5,od:5,id:4.276,len:2700},
-  {name:'Açık kuyu 8½" / DC 6½"',dh:8.5,od:6.5,id:2.8125,len:800}
-]);
-function renderSecs(){
-  $('secs').innerHTML=secs.map((s,i)=>`
-   <div class="sec">
-     <div class="sec-h"><b>Bölüm ${i+1}</b><button class="btn ghost" data-del="${i}">Sil</button></div>
-     <label>Açıklama<input id="s${i}-name" data-i="${i}" data-k="name" type="text" value="${esc(s.name)}"></label>
-     <div class="grid">
-       <label>Kuyu / muhafaza ID <small>(in)</small><input id="s${i}-dh" data-i="${i}" data-k="dh" type="number" inputmode="decimal" value="${s.dh}"></label>
-       <label>Boru OD <small>(in)</small><input id="s${i}-od" data-i="${i}" data-k="od" type="number" inputmode="decimal" value="${s.od}"></label>
-       <label>Boru ID <small>(in)</small><input id="s${i}-id" data-i="${i}" data-k="id" type="number" inputmode="decimal" value="${s.id}"></label>
-       <label>Uzunluk <small class="lu">(${lenUnit})</small><input id="s${i}-len" data-i="${i}" data-k="len" type="number" inputmode="decimal" value="${s.len}"></label>
-     </div>
-   </div>`).join('');
-}
-$('secs').addEventListener('input',e=>{const t=e.target;if(t.dataset.k){secs[t.dataset.i][t.dataset.k]=t.dataset.k==='name'?t.value:parseFloat(t.value);store.set('secs',secs);calcAll()}});
-$('secs').addEventListener('click',e=>{const d=e.target.dataset.del;if(d!=null){secs.splice(+d,1);store.set('secs',secs);renderSecs();calcAll()}});
-$('addSec').onclick=()=>{const l=secs[secs.length-1]||{dh:8.5,od:5,id:4.276};secs.push({name:'Yeni bölüm',dh:l.dh,od:l.od,id:l.id,len:500});store.set('secs',secs);renderSecs();calcAll()};
-
-function calcHacim(){
-  let pipe=0,ann=0,disp=0,open=0,depth=0,rows='',lastAnnCap=0;
-  secs.forEach((s,i)=>{
-    const L=toFt(s.len||0);
-    const pc=(s.id**2)/1029.4, ac=((s.dh**2)-(s.od**2))/1029.4, dc=((s.od**2)-(s.id**2))/1029.4;
-    pipe+=pc*L;ann+=ac*L;disp+=dc*L;open+=(s.dh**2)/1029.4*L;depth+=L;lastAnnCap=ac;
-    rows+=row(`${i+1}. ${esc(s.name||'Bölüm')}`,`${f(pc*L)} / ${f(ac*L)}`,'bbl');
-  });
-  const surf=n('h-surf')||0;
-  wellRes={pipe,ann,disp,lastAnnCap};
-  const total=pipe+ann+surf;
-  $('r-hacim').innerHTML=`<h3>Sonuç</h3>
-   ${row('Toplam sirkülasyon hacmi',f(total),'bbl',true)}
-   ${row('',f(total*BBL_M3,2),'m³')}
-   ${row('Dizi içi hacim',f(pipe),'bbl')}
-   ${row('Anülüs hacmi',f(ann),'bbl')}
-   ${row('Çelik deplasmanı',f(disp),'bbl')}
-   ${row('Boş kuyu hacmi (dizi yok)',f(open),'bbl')}
-   ${row('Toplam uzunluk',f(fromFt(depth),0),lenUnit)}
-   <div class="sp"></div><h3>Bölümler · dizi içi / anülüs</h3>${rows}`;
-}
-
-/* ---------- AĞIRLAŞTIRMA ---------- */
-function calcAgir(){
-  const V=n('a-v'),w1=n('a-w1'),w2=n('a-w2'),sg=parseFloat($('a-mat').value),sack=n('a-sack');
-  const dm=8.33*sg, h='<h3>Sonuç</h3>';
-  if(!(w2>w1)) return $('r-agir').innerHTML=h+err('Hedef yoğunluk mevcut yoğunluktan büyük olmalı.');
-  if(w2>=dm) return $('r-agir').innerHTML=h+err(`Hedef yoğunluk ağırlaştırıcının yoğunluğuna (${f(dm,2)} ppg) ulaşamaz.`);
-  const lbbbl=350*sg*(w2-w1)/(dm-w2), lb=lbbbl*V, kg=lb*LB_KG, inc=lb/(350*sg);
-  $('r-agir').innerHTML=h+row('Gereken torba',f(Math.ceil(kg/sack),0),`× ${sack} kg`,true)
-   +row('Toplam ağırlaştırıcı',f(kg/1000,2),'ton')+row('',f(lb,0),'lb')
-   +row('Birim ilave',f(lbbbl,1),'lb/bbl')+row('',f(lbbbl*2.853,1),'kg/m³')
-   +row('Hacim artışı',f(inc),'bbl')+row('Son hacim',f(V+inc),'bbl');
-}
-
-/* ---------- SEYRELTME ---------- */
-function calcSeyr(){
-  const V=n('s-v'),w1=n('s-w1'),w2=n('s-w2'),dw=n('s-dw'),h='<h3>Sonuç</h3>';
-  if(!(w2<w1)) return $('r-seyr').innerHTML=h+err('Hedef yoğunluk mevcut yoğunluktan küçük olmalı.');
-  if(!(w2>dw)) return $('r-seyr').innerHTML=h+err('Hedef yoğunluk eklenen sıvının yoğunluğundan büyük olmalı.');
-  const vw=V*(w1-w2)/(w2-dw);
-  $('r-seyr').innerHTML=h+row('Eklenecek sıvı',f(vw),'bbl',true)+row('',f(vw*BBL_M3,2),'m³')
-   +row('Son hacim',f(V+vw),'bbl')+row('Hacim artışı',f(vw/V*100,1),'%');
-}
-
-/* ---------- KİMYASAL ---------- */
-function calcKim(){
-  const V=n('k-v'),u=$('k-unit').value,sack=n('k-sack');
-  const c1=n('k-c1')||0,c2=n('k-c2'),nm=$('k-name').value||'Kimyasal';
-  const p2=u==='ppb'?c2:c2/2.853,p1=u==='ppb'?c1:c1/2.853,d=p2-p1,lb=d*V,kg=lb*LB_KG,h=`<h3>${esc(nm)}</h3>`;
-  if(!(d>0)) return $('r-kim').innerHTML=h+err('Hedef konsantrasyon mevcut değerden büyük olmalı.');
-  $('r-kim').innerHTML=h+row('Gereken torba',f(Math.ceil(kg/sack),0),`× ${sack} kg`,true)
-   +row('Toplam miktar',f(kg,0),'kg')+row('',f(lb,0),'lb')
-   +row('Eklenecek konsantrasyon',f(d,2),'ppb')+row('',f(d*2.853,2),'kg/m³')
-   +row('Sistem hacmi',f(V*BBL_M3,1),'m³');
-}
-
-/* ---------- BASINÇ ---------- */
-function calcHid(){
-  const mw=n('p-mw'),tvd=toFt(n('p-tvd')),apl=n('p-apl')||0,pp=n('p-pp');
-  const p=0.052*mw*tvd,g=0.052*mw,ecd=mw+apl/(0.052*tvd);
-  let o='<h3>Sonuç</h3>'+row('Hidrostatik basınç',f(p,0),'psi',true)+row('',f(p*PSI_BAR,1),'bar')
-   +row('Basınç gradyanı',f(g,3),'psi/ft')+row('',f(g*M_FT*PSI_BAR,4),'bar/m')
-   +row('ECD',f(ecd,2),'ppg')+row('Dolaşımda dip basıncı',f(p+apl,0),'psi');
-  if(isFinite(pp)&&pp>0){const emw=pp/(0.052*tvd);o+=row('Gözenek basıncı EMW',f(emw,2),'ppg')+row('Overbalance',f(p-pp,0),'psi')+row('Overbalance (ppg)',f(mw-emw,2),'ppg')}
-  $('r-hid').innerHTML=o;
-}
-
-/* ---------- POMPA ---------- */
-function calcPompa(){
-  const t=$('m-type').value,id=n('m-id'),L=n('m-l'),rod=n('m-rod')||0,eff=(n('m-eff')||100)/100,spm=n('m-spm');
-  const out=t==='tri'?0.000243*id*id*L*eff:0.000162*L*(2*id*id-rod*rod)*eff;
-  const bpm=out*spm,gpm=bpm*42; pumpRes={out,gpm};
-  const {pipe,ann}=wellRes,surf=n('h-surf')||0;
-  const s=v=>out>0?v/out:NaN,m=v=>bpm>0?v/bpm:NaN;
-  $('r-pompa').innerHTML='<h3>Pompa</h3>'+row('Pompa çıkışı',f(out,4),'bbl/stk',true)
-   +row('Debi',f(gpm,0),'gpm')+row('',f(bpm,2),'bbl/dk')+row('',f(gpm*3.78541,0),'L/dk')
-   +'<div class="sp"></div><h3>Dolaşım</h3>'
-   +row('Yüzeyden matkaba',`${f(s(pipe),0)} stk`,`${f(m(pipe),1)} dk`)
-   +row('Bottoms-up',`${f(s(ann),0)} stk`,`${f(m(ann),1)} dk`)
-   +row('Tam devir',`${f(s(pipe+ann+surf),0)} stk`,`${f(m(pipe+ann+surf),1)} dk`);
-}
-
-/* ---------- KILL SHEET ---------- */
-function calcKill(){
-  const omw=n('w-omw'),tvd=toFt(n('w-tvd')),sidpp=n('w-sidpp'),sicp=n('w-sicp'),pit=n('w-pit'),
-        scr=n('w-scr'),kspm=n('w-spm'),sm=n('w-sm')||0,shoe=toFt(n('w-shoe')),lot=n('w-lot');
-  const kmw=omw+sidpp/(0.052*tvd)+sm, icp=sidpp+scr, fcp=scr*kmw/omw;
-  const maasp=(lot-omw)*0.052*shoe, maaspNew=(lot-kmw)*0.052*shoe;
-  const out=pumpRes.out, stb=out>0?wellRes.pipe/out:NaN, btu=out>0?wellRes.ann/out:NaN;
-  const cap=wellRes.lastAnnCap, kh=cap>0?pit/cap:NaN;
-  const kg=0.052*omw-(sicp-sidpp)/kh;
-  let typ='—'; if(isFinite(kg)){typ=kg<0.25?'Gaz':kg<=0.4?'Yağ / gaz karışımı':'Su (tuzlu su)'}
-  let o='<h3>Kill çamuru</h3>'+row('Kill çamuru (KMW)',f(kmw,2),'ppg',true)
-   +row('ICP',f(icp,0),'psi')+row('FCP',f(fcp,0),'psi')
-   +row('MAASP (mevcut çamur)',f(maasp,0),'psi')+row('MAASP (kill çamuru)',f(maaspNew,0),'psi')
-   +'<div class="sp"></div><h3>Kick</h3>'
-   +row('Kick boyu (dip anülüs)',f(fromFt(kh),0),lenUnit)+row('Kick gradyanı',f(kg,3),'psi/ft')
-   +`<div class="row"><span class="k">Muhtemel sıvı</span><span class="tag">${typ}</span></div>`
-   +'<div class="sp"></div><h3>Dolaşım</h3>'
-   +row('Yüzeyden matkaba',f(stb,0),'stk')+row('',f(stb/kspm,1),'dk')
-   +row('Matkaptan yüzeye',f(btu,0),'stk')+row('',f(btu/kspm,1),'dk');
-  if(sicp>maasp) o+=err('SICP, MAASP değerini aşıyor. Pabuçta çatlama riski var.');
-  if(isFinite(stb)&&stb>0){
-    let t='<div class="sp"></div><h3>Basınç düşüş tablosu</h3><div style="overflow-x:auto"><table class="sch"><tr><th>Adım</th><th>Strok</th><th>DP basıncı (psi)</th></tr>';
-    for(let i=0;i<=10;i++){const st=stb*i/10,p=icp-(icp-fcp)*i/10;t+=`<tr><td>${i}</td><td>${f(st,0)}</td><td>${f(p,0)}</td></tr>`}
-    o+=t+'</table></div>';
-  }
-  $('r-kill').innerHTML=o;
-}
-
-/* ---------- ÇİMENTO ---------- */
-function calcCim(){
-  const dh=n('c-dh'),od=n('c-od'),id=n('c-id'),prev=n('c-prev'),depth=toFt(n('c-depth')),pshoe=toFt(n('c-pshoe')),
-        toc=toFt(n('c-toc')),st=toFt(n('c-st')),ex=(n('c-ex')||0)/100,y=n('c-y'),w=n('c-w'),sk=n('c-sk'),dens=n('c-dens'),dmw=n('c-dmw');
-  const h='<h3>Bulamaç</h3>';
-  if(!(depth>toc)) return $('r-cim').innerHTML=h+err('Çimento tepesi pabuç derinliğinden sığ olmalı.');
-  const Loh=Math.max(0,depth-Math.max(toc,pshoe)), Lov=Math.max(0,Math.min(pshoe,depth)-toc);
-  const vOh=(dh*dh-od*od)/1029.4*Loh*(1+ex), vOv=(prev*prev-od*od)/1029.4*Lov, vSt=id*id/1029.4*st;
-  const tot=vOh+vOv+vSt, ft3=tot*5.6146, sacks=ft3/y, water=sacks*w/42;
-  const disp=id*id/1029.4*(depth-st), out=pumpRes.out;
-  const hcem=0.052*dens*(depth-toc), hmud=0.052*dmw*toc;
-  $('r-cim').innerHTML=h+row('Toplam bulamaç',f(tot),'bbl',true)+row('',f(ft3,0),'ft³')+row('',f(tot*BBL_M3,2),'m³')
-   +row('Açık kuyu anülüsü',f(vOh),'bbl')+row('Bindirme (muhafaza içi)',f(vOv),'bbl')+row('Shoe track',f(vSt),'bbl')
-   +'<div class="sp"></div><h3>Malzeme</h3>'
-   +row('Çimento torbası',f(Math.ceil(sacks),0),`× ${sk} lb`,true)+row('Toplam çimento',f(sacks*sk*LB_KG/1000,1),'ton')
-   +row('Karışım suyu',f(water),'bbl')+row('',f(water*BBL_M3,2),'m³')
-   +'<div class="sp"></div><h3>Deplasman</h3>'
-   +row('Deplasman hacmi',f(disp),'bbl',true)+row('Pompa stroku',f(out>0?disp/out:NaN,0),'stk')
-   +row('Çimentolu kolon uzunluğu',f(fromFt(depth-toc),0),lenUnit)
-   +row('Pabuçta hidrostatik (son)',f(hcem+hmud,0),'psi')+row('Pabuç EMW',f((hcem+hmud)/(0.052*depth),2),'ppg');
-}
-
-/* ---------- HİDROLİK ---------- */
-function calcHidr(){
-  const t6=n('r-600'),t3=n('r-300'),mw=n('r-mw'),qIn=n('r-q'),q=isFinite(qIn)&&qIn>0?qIn:pumpRes.gpm;
-  const pv=t6-t3,yp=t3-pv,av=t6/2,nn=3.32*Math.log10(t6/t3),K=510*t3/Math.pow(511,nn);
-  let tfa=0;[[n('n1c'),n('n1s')],[n('n2c'),n('n2s')]].forEach(([c,s])=>{if(c>0&&s>0)tfa+=c*Math.PI/4*(s/32)**2});
-  const dpb=tfa>0?mw*q*q/(12031*tfa*tfa):NaN, hhp=dpb*q/1714, vj=tfa>0?0.32086*q/tfa:NaN;
-  const dh=n('r-dh'),od=n('r-od'),van=24.51*q/(dh*dh-od*od), hsi=hhp/(Math.PI/4*dh*dh), jif=0.01823*0.95*q*Math.sqrt(mw*dpb);
-  $('r-hidr').innerHTML='<h3>Reoloji</h3>'+row('Plastik viskozite (PV)',f(pv,0),'cP',true)+row('Akma noktası (YP)',f(yp,0),'lb/100ft²',true)
-   +row('Görünür viskozite',f(av,1),'cP')+row('Akış indeksi n',f(nn,3),'')+row('Tutarlılık K',f(K,1),'eq cP')
-   +'<div class="sp"></div><h3>Bit</h3>'
-   +row('Kullanılan debi',f(q,0),'gpm')+row('TFA',f(tfa,4),'in²')
-   +row('Bit basınç kaybı',f(dpb,0),'psi',true)+row('Jet hızı',f(vj,0),'ft/s')
-   +row('Bit hidrolik gücü',f(hhp,0),'HHP')+row('HSI',f(hsi,2),'HHP/in²')+row('Jet çarpma kuvveti',f(jif,0),'lbf')
-   +'<div class="sp"></div><h3>Anülüs</h3>'+row('Anülüs hızı',f(van,0),'ft/dk')+row('',f(van/M_FT,1),'m/dk');
-}
-
-/* ---------- TRIPPING ---------- */
-function calcTrip(){
-  const od=n('t-od'),id=n('t-id'),cas=n('t-cas'),sl=toFt(n('t-sl')),ns=n('t-n')||0,mw=n('t-mw'),
-        wdp=n('t-wdp'),ldp=toFt(n('t-ldp')),wdc=n('t-wdc')||0,ldc=toFt(n('t-ldc'))||0,pull=n('t-pull'),str=n('t-str');
-  const dry=(od*od-id*id)/1029.4, wet=od*od/1029.4, cc=cas*cas/1029.4;
-  const fd=dry*sl, fw=wet*sl;
-  const dropD=fd/(cc-dry), dropW=fw/(cc-dry);
-  const bf=(65.5-mw)/65.5, air=wdp*ldp+wdc*ldc, buoy=air*bf;
-  const fp=pull>0?735294*str*wdp/pull:NaN;
-  $('r-trip').innerHTML='<h3>Doldurma (stand başına)</h3>'
-   +row('Kuru çekme',f(fd,2),'bbl',true)+row('Islak çekme',f(fw,2),'bbl')
-   +row(`${ns} stand · kuru`,f(fd*ns,1),'bbl')+row(`${ns} stand · ıslak`,f(fw*ns,1),'bbl')
-   +'<div class="sp"></div><h3>Doldurmazsan (stand başına)</h3>'
-   +row('Seviye düşüşü · kuru',f(fromFt(dropD),1),lenUnit)+row('Basınç kaybı · kuru',f(0.052*mw*dropD,1),'psi')
-   +row('Seviye düşüşü · ıslak',f(fromFt(dropW),1),lenUnit)+row('Basınç kaybı · ıslak',f(0.052*mw*dropW,1),'psi')
-   +'<div class="sp"></div><h3>Dizi ağırlığı</h3>'
-   +row('Kaldırma faktörü (BF)',f(bf,3),'')+row('Havadaki ağırlık',f(air/1000,1),'klb')
-   +row('Çamurdaki ağırlık',f(buoy/1000,1),'klb',true)+row('',f(buoy*LB_KG/1000,1),'ton')
-   +'<div class="sp"></div><h3>Sıkışma</h3>'+row('Serbest nokta derinliği',f(fromFt(fp),0),lenUnit,true);
-}
-
-/* ---------- wiring ---------- */
-const inputs=[...document.querySelectorAll('main input[id], main select[id]')].map(e=>e.id).filter(id=>!/^s\d/.test(id));
-const saved=store.get('vals',{});
-inputs.forEach(id=>{if(saved[id]!=null)$(id).value=saved[id];$(id).addEventListener('input',()=>{saved[id]=$(id).value;store.set('vals',saved);calcAll()})});
-const calcs=[calcHacim,calcPompa,calcAgir,calcSeyr,calcKim,calcHid,calcKill,calcCim,calcHidr,calcTrip];
-function calcAll(){calcs.forEach(c=>{try{c()}catch(e){console.error(e)}})}
-
-const tabs=[...document.querySelectorAll('#tabs button')];
-function show(t){tabs.forEach(b=>b.setAttribute('aria-selected',b.dataset.t===t));
-  document.querySelectorAll('section.tool').forEach(s=>s.hidden=s.id!=='t-'+t);store.set('tab',t);
-  const b=tabs.find(b=>b.dataset.t===t);if(b&&b.scrollIntoView)b.scrollIntoView({inline:'nearest',block:'nearest'});window.scrollTo(0,0)}
-tabs.forEach(b=>b.onclick=()=>show(b.dataset.t));
-
-function setUnit(u){lenUnit=u;$('u-ft').setAttribute('aria-pressed',u==='ft');$('u-m').setAttribute('aria-pressed',u==='m');
-  store.set('lu',u);renderSecs();document.querySelectorAll('.lu').forEach(e=>e.textContent=`(${u})`);calcAll()}
-$('u-ft').onclick=()=>setUnit('ft');$('u-m').onclick=()=>setUnit('m');
-
-setUnit(store.get('lu','ft'));show(store.get('tab','hacim'));
-
-if('serviceWorker' in navigator && location.protocol==='https:'){navigator.serviceWorker.register('sw.js').catch(()=>{})}
-</script>
+<nav id="bar" role="tablist" aria-label="Bölümler">
+  <button data-g="kuyu" aria-selected="true"><svg viewBox="0 0 24 24"><path d="M12 3 6 21M12 3l6 18M8.5 13h7M7.3 17h9.4M4 21h16"/></svg>Kuyu</button>
+  <button data-g="camur"><svg viewBox="0 0 24 24"><path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z"/></svg>Çamur</button>
+  <button data-g="hesap"><svg viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8 7h8M8 11h2M12 11h2M8 15h2M12 15h2M16 11v6"/></svg>Hesaplar</button>
+</nav>
+<div class="toast" id="toast" hidden></div>
+<script src="app.js"></script>
 </body>
 </html>
