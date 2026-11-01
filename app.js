@@ -111,7 +111,7 @@ try { navigator.storage && navigator.storage.persist && navigator.storage.persis
 /* ---------------- gezinme ---------------- */
 const GROUPS = {
   kuyu: [['kuyu', 'Kuyu & Arşiv'], ['hacim', 'Kuyu Hacmi'], ['tally', 'Tally']],
-  camur: [['olcum', 'Ölçümler'], ['tank', 'Tanklar'], ['stok', 'Stok'], ['hazir', 'Hazırlama'], ['agir', 'Ağırlaştırma'], ['seyr', 'Seyreltme']],
+  camur: [['olcum', 'Ölçümler'], ['seviye', 'Seviye (cm)'], ['tank', 'Tanklar'], ['stok', 'Stok'], ['hazir', 'Hazırlama'], ['agir', 'Ağırlaştırma'], ['seyr', 'Seyreltme']],
   hesap: [['pompa', 'Dolaşım'], ['hid', 'Basınç'], ['kill', '<span lang="en">Kill sheet</span>'], ['cim', 'Çimento'], ['hidr', 'Hidrolik'], ['trip', 'Tripping']]
 };
 function showGroup(g) {
@@ -420,11 +420,40 @@ $('histTable').addEventListener('click', e => {
    ========================================================= */
 const USES = { active: 'Aktif', reserve: 'Rezerv', trip: 'Trip', settle: 'Çökeltme', other: 'Diğer' };
 const USEVAR = { active: '--u-active', reserve: '--u-reserve', trip: '--u-trip', settle: '--u-settle', other: '--u-other' };
-function compVol(c, atLevel) { // bbl, ölçüler ft
-  const h = atLevel == null ? (+c.level || 0) : atLevel;
-  const area = c.shape === 'cyl' ? Math.PI / 4 * (+c.L || 0) ** 2 : (+c.L || 0) * (+c.W || 0);
-  return tankBbl(area * h);
+/* Bölme hacmi: üç yöntem
+   dim    → ölçülerden (boy × en veya silindir çapı), seviye ft
+   factor → cm başına sabit varil katsayısı
+   table  → kalibrasyon tablosu (cm → bbl), ara değerler doğrusal */
+const CM_FT = 30.48;
+const cmOf = c => (c.cm != null && c.cm !== '' && isFinite(+c.cm)) ? +c.cm : (+c.level || 0) * CM_FT;
+const sortedTable = c => (c.table || []).filter(p => isFinite(p[0]) && isFinite(p[1])).sort((a, b) => a[0] - b[0]);
+function interp(pts, x, xi = 0, yi = 1) {
+  if (!pts.length) return 0;
+  if (pts.length === 1) return pts[0][xi] ? pts[0][yi] * x / pts[0][xi] : pts[0][yi];
+  let i = pts.findIndex(p => p[xi] >= x); if (i <= 0) i = i === 0 ? 1 : pts.length - 1;
+  const [a, b] = [pts[i - 1], pts[i]], dx = b[xi] - a[xi];
+  return dx ? a[yi] + (b[yi] - a[yi]) * (x - a[xi]) / dx : a[yi];
 }
+function dimArea(c) { return c.shape === 'cyl' ? Math.PI / 4 * (+c.L || 0) ** 2 : (+c.L || 0) * (+c.W || 0); }
+function volAtCm(c, cm) {
+  const m = c.method || 'dim';
+  if (m === 'factor') return Math.max(0, cm * (+c.factor || 0) + (+c.dead || 0));
+  if (m === 'table') return Math.max(0, interp(sortedTable(c), cm, 0, 1));
+  return tankBbl(dimArea(c) * cm / CM_FT);
+}
+function cmAtVol(c, bbl) {
+  const m = c.method || 'dim';
+  if (m === 'factor') return +c.factor ? (bbl - (+c.dead || 0)) / +c.factor : NaN;
+  if (m === 'table') { const t = sortedTable(c); return t.length ? interp(t, bbl, 1, 0) : NaN; }
+  const per = volAtCm(c, 1); return per ? bbl / per : NaN;
+}
+function maxCm(c) {
+  const m = c.method || 'dim';
+  if (m === 'factor') return +c.maxCm || 0;
+  if (m === 'table') { const t = sortedTable(c); return t.length ? t[t.length - 1][0] : 0; }
+  return (+c.H || 0) * CM_FT;
+}
+function compVol(c, atLevelFt) { return volAtCm(c, atLevelFt == null ? cmOf(c) : atLevelFt * CM_FT); }
 function tankTotals() {
   const t = { active: 0, reserve: 0, trip: 0, settle: 0, other: 0, all: 0, mwSum: 0 };
   (W().tanks || []).forEach(tk => tk.comps.forEach(c => { const v = compVol(c); t[c.use] = (t[c.use] || 0) + v; t.all += v; if (c.use === 'active' && +c.mw) t.mwSum += v * c.mw; }));
@@ -439,7 +468,7 @@ function renderTanks() {
     body += `<rect x="2" y="${top - 8}" width="${w - 4}" height="${h + 16}" rx="6" style="fill:none;stroke:var(--muted)" stroke-width="1.5"/>`;
     body += `<text x="6" y="${top - 16}" font-size="13" font-weight="700" style="fill:var(--ink);font-family:var(--f-display);letter-spacing:.04em">${esc(tk.name).toLocaleUpperCase('tr-TR')}</text>`;
     tk.comps.forEach((c, i) => {
-      const cx = 2 + padX + i * cw, hh = +c.H || 1, lvl = Math.max(0, Math.min(1, (+c.level || 0) / hh)), fh = h * lvl, v = compVol(c);
+      const cx = 2 + padX + i * cw, mx = maxCm(c), lvl = mx > 0 ? Math.max(0, Math.min(1, cmOf(c) / mx)) : 0, fh = h * lvl, v = compVol(c);
       body += `<rect x="${cx + 4}" y="${top}" width="${cw - 8}" height="${h}" rx="${c.shape === 'cyl' ? 14 : 3}" style="fill:var(--field);stroke:var(--line)" stroke-width="1.2"/>`;
       body += `<rect x="${cx + 5}" y="${top + h - fh}" width="${cw - 10}" height="${Math.max(0, fh - 1)}" rx="${c.shape === 'cyl' ? 12 : 2}" style="fill:var(${USEVAR[c.use] || '--u-other'})" opacity=".85"/>`;
       body += `<text x="${cx + cw / 2}" y="${top + h - fh - 5 < top + 12 ? top + 14 : top + h - fh - 5}" text-anchor="middle" font-size="11" style="fill:var(--ink);font-family:var(--f-num)">%${Math.round(lvl * 100)}</text>`;
@@ -478,7 +507,7 @@ $('tankEdit').addEventListener('input', e => {
   if (i.dataset.tn != null) { tanks[i.dataset.tn].name = i.value; }
   else if (i.dataset.k) {
     const c = tanks[i.dataset.t].comps[i.dataset.c], k = i.dataset.k;
-    if (['L', 'W', 'H', 'level'].includes(k)) c[k] = toFt(num(i.value) || 0);
+    if (['L', 'W', 'H', 'level'].includes(k)) { c[k] = toFt(num(i.value) || 0); if (k === 'level') c.cm = round(c.level * CM_FT, 1); }
     else if (k === 'mw') c.mw = i.value === '' ? '' : num(i.value);
     else c[k] = i.value;
     const key = i.dataset.t + '-' + i.dataset.c;
@@ -496,6 +525,108 @@ $('tankEdit').addEventListener('click', e => {
   if (d.delc) { const [t, c] = d.delc.split('-'); tanks[t].comps.splice(+c, 1); save(); renderTanks(); }
 });
 $('addTank').onclick = () => { W().tanks.push({ id: uid(), name: 'Tank ' + (W().tanks.length + 1), comps: [{ name: 'Bölme 1', use: 'active', shape: 'rect', L: 10, W: 8, H: 7, level: 0, mw: '' }] }); save(); renderTanks(); };
+
+/* =========================================================
+   TANK SEVİYESİ (cm)
+   ========================================================= */
+const lvOpen = new Set();
+const METHODS = { dim: 'Ölçülerden (boy × en)', factor: 'Sabit katsayı (bbl/cm)', table: 'Kalibrasyon tablosu' };
+function parseTarget(c) { // { bbl } ya da null
+  const s = String(c.target ?? '').trim(); if (!s) return null;
+  const rel = /^[+-]/.test(s), v = num(s.replace(/^\+/, '')); if (!isFinite(v)) return { bad: true };
+  return { bbl: rel ? compVol(c) + v : v, rel };
+}
+function lvCells(c) {
+  const cm = cmOf(c), bbl = volAtCm(c, cm), mx = maxCm(c), per = volAtCm(c, cm + 1) - bbl;
+  const tg = parseTarget(c); let need = '', diff = '', note = '';
+  if (tg && tg.bad) note = '<span class="chip hi">geçersiz hedef</span>';
+  else if (tg) {
+    if (tg.bbl < 0) note = '<span class="chip hi">hacim 0’ın altına inemez</span>';
+    else {
+      const rc = cmAtVol(c, tg.bbl), d = rc - cm;
+      if (!isFinite(rc)) note = '<span class="chip hi">yöntem ayarı eksik</span>';
+      else {
+        need = f(rc, 1);
+        diff = Math.abs(d) < 0.05 ? '<span class="chip ok">hedefte</span>' : `<span class="chip ${d > 0 ? 'ok' : 'lo'}">${d > 0 ? '▲ ' + f(d, 1) + ' cm doldur' : '▼ ' + f(-d, 1) + ' cm boşalt'}</span>`;
+        if (mx && rc > mx) note = `<span class="chip hi">bölme ${f(mx, 0)} cm, taşar</span>`;
+        if (tg.rel) note += ` <span class="note">→ ${f(tg.bbl, 1)} bbl</span>`;
+      }
+    }
+  }
+  const warn = mx && cm > mx ? ' <span class="chip hi">bölme yüksekliğini aşıyor</span>' : '';
+  return { bbl: f(bbl, 1), m3: f(bbl * BBL_M3, 2), per: isFinite(per) && per > 0 ? f(per, 2) : '—', need, diff: diff + (note ? ' ' + note : '') + warn };
+}
+function renderSeviye() {
+  const tanks = W().tanks || [];
+  $('lvTanks').innerHTML = tanks.length ? tanks.map((tk, ti) => `
+    <div class="card lv">
+      <h2>${esc(tk.name)}</h2>
+      <div class="tw"><table class="t">
+        <tr><th>Bölme</th><th class="n">Ölçülen (cm)</th><th class="n">Varil</th><th class="n">m³</th><th class="n">bbl / cm</th><th class="n">Hedef (bbl veya ±)</th><th class="n">Gereken (cm)</th><th>Yapılacak</th><th></th></tr>
+        ${tk.comps.map((c, ci) => { const k = ti + '-' + ci, v = lvCells(c); return `
+        <tr>
+          <td><b>${esc(c.name)}</b><div class="note" style="margin:0;font-size:.74rem">${USES[c.use] || ''} · ${c.method === 'factor' ? 'katsayı' : c.method === 'table' ? 'tablo' : 'ölçü'}</div></td>
+          <td><input id="lv-cm-${k}" data-lv="${k}" data-lk="cm" type="text" inputmode="decimal" value="${round(cmOf(c), 1)}"></td>
+          <td class="n big" data-o="bbl-${k}">${v.bbl}</td>
+          <td class="n" data-o="m3-${k}">${v.m3}</td>
+          <td class="n" data-o="per-${k}">${v.per}</td>
+          <td><input id="lv-tg-${k}" data-lv="${k}" data-lk="target" type="text" inputmode="decimal" placeholder="örn. +50" value="${esc(c.target ?? '')}"></td>
+          <td class="n big" data-o="need-${k}">${v.need}</td>
+          <td data-o="diff-${k}">${v.diff}</td>
+          <td><button class="btn ghost" data-lvcfg="${k}">Ayar</button></td>
+        </tr>
+        ${lvOpen.has(k) ? `<tr class="cfg"><td colspan="9"><div class="cfgbox">
+          <label>cm → varil yöntemi<select data-lv="${k}" data-lk="method">${Object.entries(METHODS).map(([m, l]) => `<option value="${m}"${(c.method || 'dim') === m ? ' selected' : ''}>${l}</option>`).join('')}</select></label>
+          ${(c.method || 'dim') === 'dim' ? `<p class="note" style="margin:0">Ölçüler <b>Tanklar</b> sekmesinden alınıyor: ${c.shape === 'cyl' ? 'çap ' + f(fromFt(+c.L), 2) : f(fromFt(+c.L), 2) + ' × ' + f(fromFt(+c.W), 2)} ${unit()}, yükseklik ${f(fromFt(+c.H), 2)} ${unit()}.</p>` : ''}
+          ${c.method === 'factor' ? `<label>1 cm kaç varil <small>(bbl/cm)</small><input id="lv-f-${k}" data-lv="${k}" data-lk="factor" type="text" inputmode="decimal" value="${c.factor ?? ''}"></label>
+            <label>Ölü hacim <small>(0 cm'deki bbl)</small><input id="lv-d-${k}" data-lv="${k}" data-lk="dead" type="text" inputmode="decimal" value="${c.dead ?? 0}"></label>
+            <label>Bölme yüksekliği <small>(cm)</small><input id="lv-x-${k}" data-lv="${k}" data-lk="maxCm" type="text" inputmode="decimal" value="${c.maxCm ?? ''}"></label>` : ''}
+          ${c.method === 'table' ? `<label style="grid-column:1/-1">Kalibrasyon tablosu <small>(her satıra: cm  varil — örn. "50  42,5")</small><textarea id="lv-t-${k}" data-lv="${k}" data-lk="table" placeholder="0  0&#10;10  8,6&#10;20  17,4">${esc((c.table || []).map(p => `${String(p[0]).replace('.', ',')}  ${String(p[1]).replace('.', ',')}`).join('\n'))}</textarea></label>
+            <p class="note" style="margin:0">${sortedTable(c).length} satır okundu. Tablodaki noktalar arası doğrusal hesaplanır.</p>` : ''}
+        </div></td></tr>` : ''}`; }).join('')}
+      </table></div>
+    </div>`).join('') : '<div class="card"><p class="note">Henüz tank yok. Önce Tanklar sekmesinden tank ve bölmeleri ekle.</p></div>';
+  renderLvTotals(); renderLvHist();
+}
+function renderLvTotals() {
+  const t = tankTotals();
+  $('lvTotals').innerHTML = `<div><span>Aktif sistem</span><b>${f(t.active, 1)} bbl</b></div><div><span>Rezerv</span><b>${f(t.reserve, 1)} bbl</b></div><div><span>Trip</span><b>${f(t.trip, 1)} bbl</b></div><div><span>Tüm tanklar</span><b>${f(t.all, 1)} bbl</b></div><div><span>Tüm tanklar</span><b>${f(t.all * BBL_M3, 1)} m³</b></div>`;
+}
+function parseCalTable(s) {
+  return s.split(/\r?\n/).map(l => { l = l.trim(); if (!l) return null;
+    let p = l.split(/[\s;\t]+/).filter(Boolean); if (p.length === 1 && (p[0].match(/,/g) || []).length === 1) p = p[0].split(',');
+    return p.length >= 2 ? [num(p[0]), num(p[1])] : null; }).filter(p => p && isFinite(p[0]) && isFinite(p[1]));
+}
+$('lvTanks').addEventListener('input', e => {
+  const i = e.target, k = i.dataset.lv; if (!k) return;
+  const [ti, ci] = k.split('-'), c = W().tanks[ti].comps[ci], lk = i.dataset.lk;
+  if (lk === 'cm') { const v = num(i.value); c.cm = isFinite(v) ? v : 0; c.level = c.cm / CM_FT; }
+  else if (lk === 'target') c.target = i.value;
+  else if (lk === 'table') c.table = parseCalTable(i.value);
+  else if (lk === 'method') { c.method = i.value; save(); renderSeviye(); return; }
+  else c[lk] = num(i.value);
+  save();
+  const v = lvCells(c); ['bbl', 'm3', 'per', 'need', 'diff'].forEach(x => { const el = document.querySelector(`[data-o="${x}-${k}"]`); if (el) el.innerHTML = v[x]; });
+  renderLvTotals();
+  if (lk === 'table') { const nt = i.closest('label').nextElementSibling; if (nt) nt.textContent = `${sortedTable(c).length} satır okundu. Tablodaki noktalar arası doğrusal hesaplanır.`; }
+});
+$('lvTanks').addEventListener('click', e => { const k = e.target.dataset.lvcfg; if (!k) return; lvOpen.has(k) ? lvOpen.delete(k) : lvOpen.add(k); renderSeviye(); });
+$('lvSave').onclick = () => {
+  const w = W(); w.gauges = w.gauges || [];
+  const t = tankTotals();
+  w.gauges.push({ t: new Date().toISOString(), totals: { active: t.active, reserve: t.reserve, trip: t.trip, all: t.all },
+    items: w.tanks.flatMap(tk => tk.comps.map(c => ({ tank: tk.name, comp: c.name, use: c.use, cm: round(cmOf(c), 1), bbl: round(compVol(c), 1) }))) });
+  save(); renderLvHist(); toast('Seviye ölçümü kaydedildi');
+};
+function renderLvHist() {
+  const g = W().gauges || [];
+  $('lvLast').textContent = g.length ? `Son kayıt: ${fmtDate(g[g.length - 1].t)}` : 'Henüz kaydedilmiş seviye ölçümü yok.';
+  $('lvHist').innerHTML = `<tr><th>Tarih</th><th class="n">Aktif</th><th class="n">Değişim</th><th class="n">Rezerv</th><th class="n">Trip</th><th class="n">Toplam</th><th></th></tr>` +
+    (g.length ? [...g].map((x, i) => ({ x, i })).reverse().map(({ x, i }) => { const d = i ? x.totals.active - g[i - 1].totals.active : null;
+      return `<tr><td>${fmtDate(x.t)}</td><td class="n">${f(x.totals.active, 1)}</td><td class="n">${d == null ? '—' : `<span class="chip ${d >= 0 ? 'ok' : 'hi'}">${d >= 0 ? '+' : ''}${f(d, 1)}</span>`}</td><td class="n">${f(x.totals.reserve, 1)}</td><td class="n">${f(x.totals.trip, 1)}</td><td class="n">${f(x.totals.all, 1)}</td><td><button class="btn ghost" data-delg="${i}">Sil</button></td></tr>`; }).join('')
+      : '<tr><td colspan="7" style="padding:14px;color:var(--muted)">Kayıt yok.</td></tr>');
+}
+$('lvHist').addEventListener('click', e => { const d = e.target.dataset.delg; if (d != null && confirm('Bu seviye kaydı silinsin mi?')) { W().gauges.splice(+d, 1); save(); renderLvHist(); } });
 
 /* =========================================================
    STOK
@@ -912,8 +1043,12 @@ async function exportExcel(w, only) {
       ...reps.map(r => [fmtDate(r.time), r.depth ? +(+r.depth).toFixed(0) : '', r.src || '', ...PROPS.map(p => r.v[p.k] ?? ''), r.note || ''])], [16, 11, 12, ...PROPS.map(() => 11), 30]);
     add('Stok', [['Kimyasal', 'Mevcut', 'Birim', 'kg/birim', 'Asgari', 'Durum'], ...w.stock.map(s => [s.name, +s.qty, s.unit, +s.kg, +s.min, +s.qty <= +s.min ? 'Sipariş ver' : 'Yeterli'])], [22, 10, 8, 10, 10, 12]);
     add('Stok hareketleri', [['Tarih', 'Kimyasal', 'İşlem', 'Miktar', 'Birim', 'Not'], ...w.stockLog.map(l => [fmtDate(l.t), l.item, l.kind, l.qty, l.unit, l.note])], [16, 20, 10, 10, 8, 30]);
-    add('Tanklar', [['Tank', 'Bölme', 'Kullanım', 'Şekil', 'Boy/çap (ft)', 'En (ft)', 'Yükseklik (ft)', 'Seviye (ft)', 'MW (ppg)', 'Hacim (bbl)'],
-      ...w.tanks.flatMap(t => t.comps.map(c => [t.name, c.name, USES[c.use], c.shape === 'cyl' ? 'Silindir' : 'Dikdörtgen', +(+c.L).toFixed(2), +(+c.W).toFixed(2), +(+c.H).toFixed(2), +(+c.level).toFixed(2), c.mw, +compVol(c).toFixed(1)]))], [16, 14, 10, 11, 11, 9, 12, 11, 9, 11]);
+    add('Tanklar', [['Tank', 'Bölme', 'Kullanım', 'Şekil', 'Boy/çap (ft)', 'En (ft)', 'Yükseklik (ft)', 'Seviye (cm)', 'Yöntem', 'MW (ppg)', 'Hacim (bbl)'],
+      ...w.tanks.flatMap(t => t.comps.map(c => [t.name, c.name, USES[c.use], c.shape === 'cyl' ? 'Silindir' : 'Dikdörtgen', +(+c.L).toFixed(2), +(+c.W).toFixed(2), +(+c.H).toFixed(2), +cmOf(c).toFixed(1), METHODS[c.method || 'dim'], c.mw, +compVol(c).toFixed(1)]))], [16, 14, 10, 11, 11, 9, 12, 11, 9, 11]);
+    const gs = w.gauges || [];
+    if (gs.length) add('Tank seviye ölçümleri', [['Tarih', 'Tank', 'Bölme', 'Kullanım', 'Seviye (cm)', 'Hacim (bbl)'],
+      ...gs.flatMap(g => g.items.map(it => [fmtDate(g.t), it.tank, it.comp, USES[it.use] || '', it.cm, it.bbl])),
+      [], ['Tarih', 'Aktif (bbl)', 'Rezerv (bbl)', 'Trip (bbl)', 'Toplam (bbl)'], ...gs.map(g => [fmtDate(g.t), +g.totals.active.toFixed(1), +g.totals.reserve.toFixed(1), +g.totals.trip.toFixed(1), +g.totals.all.toFixed(1)])], [16, 16, 14, 10, 11, 11]);
     if (tl.rows.length) tallySheet();
   }
   const out = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
@@ -936,6 +1071,7 @@ function renderAll(full) {
     if (t === 'kuyu') renderKuyu();
     if (t === 'olcum') renderOlcum();
     if (t === 'tank') renderTanks();
+    if (t === 'seviye') renderSeviye();
     if (t === 'stok') renderStok();
     if (t === 'hazir') { fillTankSelect(); renderHazirRows(); calcHazir(); }
     if (t === 'agir') { fillStockSelects(); calcAgir(); }
