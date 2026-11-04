@@ -38,7 +38,7 @@ const fd = (ppg, d) => f(fromPpg(ppg), d != null ? d : (isPcf() ? 1 : 2));
 const nd = id => toPpg(n(id));
 
 /* ---------------- çamur özellikleri ---------------- */
-const BASE_PROPS = [
+const PROPS = [
   { k: 'mw', n: 'Yoğunluk', u: 'ppg', d: 2, lo: 10, hi: 10.8, dens: true },
   { k: 'fv', n: 'Huni viskozitesi', u: 'sn/qt', d: 0, lo: 40, hi: 55 },
   { k: 'pv', n: 'PV', u: 'cP', d: 0, lo: 10, hi: 22 },
@@ -66,18 +66,7 @@ const BASE_PROPS = [
   { k: 'pm', n: 'Pm', u: 'ml', d: 2, lo: null, hi: null },
   { k: 'temp', n: 'Sıcaklık', u: '°C', d: 0, lo: null, hi: null }
 ];
-const defaultTargets = () => Object.fromEntries(BASE_PROPS.map(p => [p.k, { lo: p.lo, hi: p.hi }]));
-/* test listesi kullanıcıya göre: gizlenen testler formda ve kartlarda görünmez, eski verisi silinmez.
-   Kullanıcı kendi testini de ekleyebilir (DB.propCfg.custom). */
-let ALLPROPS = BASE_PROPS.slice(), PROPS = BASE_PROPS.slice();
-const propCfg = () => { DB.propCfg = DB.propCfg || { hidden: [], custom: [], order: [] }; return DB.propCfg; };
-function rebuildProps() {
-  const c = propCfg();
-  ALLPROPS = [...BASE_PROPS, ...(c.custom || []).map(x => ({ k: x.k, n: x.n, u: x.u || '', d: isFinite(+x.d) ? +x.d : 1, lo: null, hi: null, custom: true }))];
-  PROPS = ALLPROPS.filter(p => !(c.hidden || []).includes(p.k));
-  if (!PROPS.length) PROPS = [ALLPROPS[0]];
-  if (!PROPS.some(p => p.k === chartKey)) chartKey = PROPS[0].k;
-}
+const defaultTargets = () => Object.fromEntries(PROPS.map(p => [p.k, { lo: p.lo, hi: p.hi }]));
 /* yoğunluk özelliği içeride ppg; ekranda seçili birim */
 const pU = p => p.dens ? dLbl() : p.u;
 const pD = p => p.dens ? (isPcf() ? 1 : 2) : p.d;
@@ -98,12 +87,14 @@ function mr8000Tanks() {
   return [
     { id: uid(), name: 'Elek tankı', comps: [mrComp('3. bölme', 'active', 2.16, 0.333), mrComp('2. bölme', 'active', 2.16, 0.333), mrComp('1. bölme', 'active', 2.15, 0.331), mrComp('Kum tuzağı', 'active', 2.08, 0.298, 0.321, 0.321)] },
     cok('Çökelme tankı', 'active'),
+    { id: uid(), name: 'Emiş-1 tankı', comps: [mrComp('1. bölme', 'active', 2.25, 0.347), mrComp('2. bölme', 'active', 3.73, 0.575), mrComp('3. bölme', 'active', 5.3, 0.344, 0.592, 0.817)] },
+    cok('Emiş-2 tankı', 'reserve', 'kısım'),
+    cok('Hopper', 'reserve'),
     cok('Rezerv-1 tankı', 'reserve'),
     cok('Rezerv-2 tankı', 'reserve'),
-    cok('Hopper', 'reserve'),
-    { id: uid(), name: 'Emiş-1 tankı', comps: [mrComp('1. bölme', 'active', 2.25, 0.347), mrComp('2. bölme', 'active', 3.73, 0.575), mrComp('3. bölme', 'active', 5.3, 0.344, 0.592, 0.817)] },
-    cok('Emiş-2 tankı', 'reserve', 'kısım')
-  ].map(t => (t.comps.forEach(c => c.id = uid()), t));
+    { id: uid(), name: 'Su tankı-1', comps: [mrComp('Su', 'other', 11.3, 1.256, 1.51, 1.741)] },
+    { id: uid(), name: 'Su tankı-2', comps: [mrComp('Su', 'other', 11.3, 1.256, 1.51, 1.741)] }
+  ];
 }
 function sampleTanks() { return mr8000Tanks(); }
 function sampleStock() {
@@ -142,21 +133,6 @@ function load() {
     DB = { v: 2, unit: 'ft', active: w.id, wells: { [w.id]: w }, lastBackup: null, group: 'kuyu', tab: {} };
   }
   if (!DB.wells[DB.active]) DB.active = Object.keys(DB.wells)[0];
-  migrate();
-}
-/* sürüm geçişleri: kayıtlı veriyi bozmadan uygula */
-function migrate() {
-  DB.mig = DB.mig || {};
-  Object.values(DB.wells).forEach(w => {
-    (w.tanks || []).forEach(t => (t.comps || []).forEach(c => { if (!c.id) c.id = uid(); }));
-    if (!DB.mig.mr2 && Array.isArray(w.tanks)) {
-      // MR 8000: Emiş-1 ↔ Rezerv-1, Emiş-2 ↔ Rezerv-2 yer değiştirir, su tankları çıkar
-      const T = w.tanks, ix = nm => T.findIndex(t => t.name === nm);
-      const sw = (a, b) => { const i = ix(a), j = ix(b); if (i >= 0 && j >= 0) [T[i], T[j]] = [T[j], T[i]]; };
-      if (ix('Emiş-1 tankı') >= 0 && ix('Rezerv-1 tankı') >= 0) { sw('Emiş-1 tankı', 'Rezerv-1 tankı'); sw('Emiş-2 tankı', 'Rezerv-2 tankı'); w.tanks = T.filter(t => !/^Su tankı-[12]$/.test(t.name)); }
-    }
-  });
-  DB.mig.mr2 = true;
 }
 let saveT;
 function save() { clearTimeout(saveT); saveT = setTimeout(() => { try { localStorage.setItem(KEY, JSON.stringify(DB)); } catch (e) { toast('Kayıt yapılamadı: cihaz hafızası dolu olabilir.'); } }, 250); }
@@ -167,7 +143,7 @@ try { navigator.storage && navigator.storage.persist && navigator.storage.persis
 const GROUPS = {
   kuyu: [['kuyu', 'Kuyu & Arşiv'], ['hacim', 'Kuyu Hacmi'], ['tally', 'Tally']],
   camur: [['olcum', 'Ölçümler'], ['seviye', 'Seviye (cm)'], ['tank', 'Tanklar'], ['stok', 'Stok'], ['hazir', 'Hazırlama'], ['agir', 'Ağırlaştırma'], ['seyr', 'Düşürme'], ['kati', 'Katı analizi']],
-  hesap: [['etki', 'Kimyasal etkisi'], ['pompa', 'Dolaşım'], ['hid', 'Basınç'], ['kill', '<span lang="en">Kill sheet</span>'], ['cim', 'Çimento'], ['hidr', 'Hidrolik'], ['trip', 'Tripping']]
+  hesap: [['pompa', 'Dolaşım'], ['hid', 'Basınç'], ['kill', '<span lang="en">Kill sheet</span>'], ['cim', 'Çimento'], ['hidr', 'Hidrolik'], ['trip', 'Tripping']]
 };
 function showGroup(g) {
   DB.group = g; save();
@@ -222,7 +198,7 @@ function setDUnit(u, convert) {
 $('d-ppg').onclick = () => setDUnit('ppg', true); $('d-pcf').onclick = () => setDUnit('pcf', true);
 
 /* ---------------- hesap girdileri (kuyu bazlı) ---------------- */
-const CALC_INPUTS = [...document.querySelectorAll('#t-hacim input[id], #t-agir input[id], #t-agir select[id], #t-seyr input[id], #t-seyr select[id], #t-pompa input[id], #t-pompa select[id], #t-hid input[id], #t-kill input[id], #t-cim input[id], #t-hidr input[id], #t-hidr select[id], #t-trip input[id], #t-hazir select[id], #t-hazir input[id], #t-kati input[id], #t-kati select[id], #e-v, #e-mode')]
+const CALC_INPUTS = [...document.querySelectorAll('#t-hacim input[id], #t-agir input[id], #t-agir select[id], #t-seyr input[id], #t-seyr select[id], #t-pompa input[id], #t-pompa select[id], #t-hid input[id], #t-kill input[id], #t-cim input[id], #t-hidr input[id], #t-hidr select[id], #t-trip input[id], #t-hazir select[id], #t-hazir input[id], #t-kati input[id], #t-kati select[id]')]
   .map(e => e.id).filter(id => !['a-stock', 'z-tank'].includes(id));
 const DEFAULTS = Object.fromEntries(CALC_INPUTS.map(id => [id, $(id).value]));
 function loadCalcInputs() {
@@ -283,7 +259,7 @@ $('nwCancel').onclick = () => $('newWellBox').hidden = true;
 $('nwCreate').onclick = () => {
   const old = W(), name = $('nw-name').value.trim() || 'Yeni kuyu';
   const w = newWell(name, { targets: JSON.parse(JSON.stringify(old.targets)) });
-  if ($('nw-carry').checked) { w.stock = JSON.parse(JSON.stringify(old.stock)); w.tanks = JSON.parse(JSON.stringify(old.tanks)); if (old.custTot) w.custTot = JSON.parse(JSON.stringify(old.custTot)); w.recipe = JSON.parse(JSON.stringify(old.recipe)); }
+  if ($('nw-carry').checked) { w.stock = JSON.parse(JSON.stringify(old.stock)); w.tanks = JSON.parse(JSON.stringify(old.tanks)); w.recipe = JSON.parse(JSON.stringify(old.recipe)); }
   else { w.stock = []; w.tanks = []; w.recipe = { rows: [] }; }
   if ($('nw-secs').checked) w.secs = JSON.parse(JSON.stringify(old.secs));
   DB.wells[w.id] = w; DB.active = w.id; save();
@@ -428,7 +404,7 @@ function stat(k, v) {
   return 'ok';
 }
 const rangeTxt = k => {
-  const p = ALLPROPS.find(x => x.k === k), t = W().targets[k] || {}, lo = t.lo != null && t.lo !== '', hi = t.hi != null && t.hi !== '';
+  const p = PROPS.find(x => x.k === k), t = W().targets[k] || {}, lo = t.lo != null && t.lo !== '', hi = t.hi != null && t.hi !== '';
   const s = v => f(pOut(p, +v), pD(p)).replace(/,0+$/, '').replace(/(,\d*?)0+$/, '$1');
   return lo && hi ? `${s(t.lo)}–${s(t.hi)}` : lo ? `≥ ${s(t.lo)}` : hi ? `≤ ${s(t.hi)}` : 'hedef yok';
 };
@@ -445,7 +421,7 @@ function renderOlcum(skipTgt) {
   }).join('');
   renderTrend();
   // geçmiş
-  const cols = ALLPROPS.filter(p => reps.some(r => r.v[p.k] != null && isFinite(r.v[p.k])));
+  const cols = PROPS.filter(p => reps.some(r => r.v[p.k] != null && isFinite(r.v[p.k])));
   $('histTable').innerHTML = reps.length ? `<tr><th>Tarih</th><th class="n">Derinlik</th>${cols.map(p => `<th class="n">${p.n}</th>`).join('')}<th>Not</th><th></th></tr>` +
     [...reps].reverse().map(r => `<tr data-rep="${r.id}" style="cursor:pointer"><td>${fmtDate(r.time)}</td><td class="n">${r.depth ? f(fromFt(r.depth), 0) : '—'}</td>` +
       cols.map(p => { const v = r.v[p.k], s = stat(p.k, v); return `<td class="n ${s !== 'na' && s !== 'ok' ? 'c-' + s : ''}">${v != null && isFinite(v) ? f(pOut(p, v), pD(p)) : ''}</td>`; }).join('') +
@@ -480,44 +456,10 @@ function renderTrend() {
 }
 $('propCards').addEventListener('click', e => { const b = e.target.closest('.prop'); if (b) { chartKey = b.dataset.k; renderOlcum(); } });
 $('o-tgtBtn').onclick = () => $('o-tgt').hidden = !$('o-tgt').hidden;
-$('o-cfgBtn').onclick = () => { $('o-cfg').hidden = !$('o-cfg').hidden; renderPropCfg(); };
-function renderPropCfg() {
-  const c = propCfg(), reps = W().reports;
-  $('o-cfgList').innerHTML = ALLPROPS.map(p => {
-    const cnt = reps.filter(r => r.v[p.k] != null && isFinite(r.v[p.k])).length;
-    return `<div class="pcfg"><label class="chk"><input type="checkbox" data-pk="${p.k}"${(c.hidden || []).includes(p.k) ? '' : ' checked'}> ${esc(p.n)} <small style="color:var(--muted)">${esc(pU(p))}</small></label>
-      <span class="note" style="margin:0">${cnt ? cnt + ' kayıt' : ''}</span>${p.custom ? `<button class="btn ghost" data-pdel="${p.k}">Sil</button>` : '<span></span>'}</div>`;
-  }).join('');
-}
-$('o-cfgList').addEventListener('change', e => {
-  const k = e.target.dataset.pk; if (!k) return; const c = propCfg(); c.hidden = (c.hidden || []).filter(x => x !== k);
-  if (!e.target.checked) { if (PROPS.length <= 1) { e.target.checked = true; toast('En az bir test açık kalmalı.'); return; } c.hidden.push(k); }
-  save(); rebuildProps(); renderPropInputs(); renderOlcum();
-});
-$('o-cfgList').addEventListener('click', e => {
-  const k = e.target.dataset.pdel; if (!k) return; const p = ALLPROPS.find(x => x.k === k);
-  if (!confirm(`"${p.n}" testi listeden silinsin mi? Kayıtlı ölçümlerdeki değerleri silinmez, sadece gizlenir.`)) return;
-  const c = propCfg(); c.custom = c.custom.filter(x => x.k !== k); c.hidden = (c.hidden || []).filter(x => x !== k);
-  save(); rebuildProps(); renderPropInputs(); renderPropCfg(); renderOlcum();
-});
-$('o-cfgAll').onclick = () => { propCfg().hidden = []; save(); rebuildProps(); renderPropInputs(); renderPropCfg(); renderOlcum(); };
-$('o-cfgBasic').onclick = () => { // günlük temel testler
-  const basic = ['mw', 'fv', 'pv', 'yp', 'g10s', 'g10m', 'ph', 'fl', 'cake', 'sol', 'sand', 'cl', 'ca'];
-  propCfg().hidden = ALLPROPS.filter(p => !basic.includes(p.k) && !p.custom).map(p => p.k); save(); rebuildProps(); renderPropInputs(); renderPropCfg(); renderOlcum();
-};
-$('o-cfgAdd').onclick = () => {
-  const name = $('pc-name').value.trim(); if (!name) { toast('Test adını yaz.'); return; }
-  const c = propCfg(), k = 'c_' + uid();
-  c.custom.push({ k, n: name, u: $('pc-unit').value.trim(), d: n('pc-d') >= 0 ? Math.min(4, Math.round(n('pc-d'))) : 1 });
-  Object.values(DB.wells).forEach(w => { w.targets[k] = { lo: null, hi: null }; });
-  $('pc-name').value = ''; $('pc-unit').value = '';
-  save(); rebuildProps(); renderPropInputs(); renderPropCfg(); renderOlcum(); toast(`"${name}" testi eklendi`);
-};
-$('tgtTable').addEventListener('input', e => { const i = e.target; if (!i.dataset.tk) return; const p = ALLPROPS.find(x => x.k === i.dataset.tk), t = W().targets[i.dataset.tk] = W().targets[i.dataset.tk] || {}; const v = num(i.value); t[i.dataset.tb] = isFinite(v) ? pIn(p, v) : null; save(); renderOlcum(true); });
+$('tgtTable').addEventListener('input', e => { const i = e.target; if (!i.dataset.tk) return; const p = PROPS.find(x => x.k === i.dataset.tk), t = W().targets[i.dataset.tk] = W().targets[i.dataset.tk] || {}; const v = num(i.value); t[i.dataset.tb] = isFinite(v) ? pIn(p, v) : null; save(); renderOlcum(true); });
 function clearForm() { editingRep = null; PROPS.forEach(p => $('op-' + p.k).value = ''); $('o-note').value = ''; $('o-time').value = nowLocal(); $('olcumFormTitle').textContent = 'Yeni ölçüm'; $('o-save').textContent = 'Ölçümü kaydet'; $('o-cancel').hidden = true; }
 $('o-save').onclick = () => {
-  const old = editingRep ? (W().reports.find(r => r.id === editingRep) || {}).v || {} : {};
-  const v = Object.fromEntries(Object.entries(old).filter(([k]) => !PROPS.some(p => p.k === k))); let any = false;
+  const v = {}; let any = false;
   PROPS.forEach(p => { const x = n('op-' + p.k); if (isFinite(x)) { v[p.k] = pIn(p, x); any = true; } });
   if (!any) { toast('En az bir özellik değeri gir.'); return; }
   const d = n('o-depth');
@@ -611,50 +553,6 @@ function totalsHtml(t, d = 0) {
     + `<div><span>Aktif + kuyu</span><b>${f(t.active + wellRes.pipe + wellRes.ann, d)} bbl</b></div>`
     + (t.mwVol ? `<div><span>Aktif ort. yoğunluk</span><b>${fd(t.mwSum / t.mwVol)} ${dLbl()}</b></div>` : '');
 }
-/* başlık toplamları: toplam sistem + kullanıcının belirlediği özel toplam */
-const custTot = () => { const w = W(); w.custTot = w.custTot || { name: '', sel: [], hole: false, extra: 0 }; return w.custTot; };
-function custVal() {
-  const c = custTot(), sel = new Set(c.sel || []); let v = 0, any = false;
-  (W().tanks || []).forEach(tk => tk.comps.forEach(cp => { if (sel.has(cp.id)) { v += compVol(cp); any = true; } }));
-  if (c.hole) { v += wellRes.pipe + wellRes.ann; any = true; }
-  const ex = +c.extra || 0; if (ex) { v += ex; any = true; }
-  return any ? v : null;
-}
-function renderHdrTot() {
-  if (!$('hdrTot') || !DB) return;
-  const t = tankTotals(), sys = t.active + t.reserve + wellRes.pipe + wellRes.ann, c = custTot(), cv = custVal();
-  $('hdrTot').innerHTML = `<button data-go="tank" title="Aktif + rezerv tanklar + kuyu içi">Toplam sistem <b>${f(sys, 0)} bbl</b></button>`
-    + `<button data-go="ct"${cv == null ? ' class="set"' : ''}>${esc(c.name || 'Özel toplam')} <b>${cv == null ? 'ayarla' : f(cv, 0) + ' bbl'}</b></button>`
-    + `<button data-go="tank">Aktif <b>${f(t.active, 0)} bbl</b></button>`;
-  if ($('ctOut')) $('ctOut').innerHTML = `<div><span>${esc(c.name || 'Özel toplam')}</span><b>${cv == null ? '—' : f(cv, 1) + ' bbl'}</b>${cv == null ? '' : `<span style="text-transform:none">${f(cv * BBL_M3, 1)} m³</span>`}</div><div><span>Toplam sistem</span><b>${f(sys, 1)} bbl</b></div>`;
-}
-$('hdrTot').addEventListener('click', e => {
-  const b = e.target.closest('button'); if (!b) return;
-  if (DB.group !== 'camur') showGroup('camur');
-  showTab('tank');
-  if (b.dataset.go === 'ct') setTimeout(() => $('ctCard').scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
-});
-function renderCustTot() {
-  const c = custTot(), sel = new Set(c.sel || []);
-  if (document.activeElement !== $('ct-name')) $('ct-name').value = c.name || '';
-  if (document.activeElement !== $('ct-extra')) $('ct-extra').value = c.extra || 0;
-  $('ct-hole').checked = !!c.hole;
-  $('ctList').innerHTML = (W().tanks || []).map(tk => {
-    const all = tk.comps.length && tk.comps.every(cp => sel.has(cp.id));
-    return `<div class="sec"><label class="chk" style="font-weight:700"><input type="checkbox" data-cttank="${tk.id}"${all ? ' checked' : ''}> ${esc(tk.name)}</label>
-      ${tk.comps.map(cp => `<label class="chk" style="padding-left:22px"><input type="checkbox" data-ctc="${cp.id}"${sel.has(cp.id) ? ' checked' : ''}> ${esc(cp.name)} <small style="color:var(--muted)">${f(compVol(cp), 1)} bbl</small></label>`).join('')}</div>`;
-  }).join('') || '<p class="note">Önce tank ekle.</p>';
-  renderHdrTot();
-}
-$('ct-name').addEventListener('input', () => { custTot().name = $('ct-name').value; save(); renderHdrTot(); });
-$('ct-extra').addEventListener('input', () => { const v = num($('ct-extra').value); custTot().extra = isFinite(v) ? v : 0; save(); renderHdrTot(); });
-$('ct-hole').addEventListener('change', () => { custTot().hole = $('ct-hole').checked; save(); renderHdrTot(); });
-$('ctList').addEventListener('change', e => {
-  const c = custTot(), sel = new Set(c.sel || []), d = e.target.dataset;
-  if (d.ctc) e.target.checked ? sel.add(d.ctc) : sel.delete(d.ctc);
-  if (d.cttank) { const tk = W().tanks.find(t => t.id === d.cttank); tk.comps.forEach(cp => e.target.checked ? sel.add(cp.id) : sel.delete(cp.id)); }
-  c.sel = [...sel]; save(); renderCustTot();
-});
 function renderTanks() {
   const tanks = W().tanks || [];
   // şema: her tank ayrı çizim, dar ekranda alt satıra geçer
@@ -676,10 +574,8 @@ function renderTanks() {
     return `<svg viewBox="0 0 ${w} ${H}" width="${w}" height="${H}" role="img" aria-label="${esc(tk.name)}">${body}</svg>`;
   }).join('') : '<p class="note">Henüz tank yok. Aşağıdan ekle.</p>';
   $('tankTotals').innerHTML = totalsHtml(tankTotals());
-  renderHdrTot();
   // düzenleme
   if (renderTanks.skipEdit) return;
-  renderCustTot();
   const u = unit();
   $('tankEdit').innerHTML = tanks.map((tk, ti) => `
     <div class="sec">
@@ -723,13 +619,13 @@ $('tankEdit').addEventListener('change', e => { if (e.target.dataset.k === 'shap
 $('tankEdit').addEventListener('click', e => {
   const d = e.target.dataset, tanks = W().tanks;
   if (d.deltank != null) { if (confirm(`"${tanks[d.deltank].name}" silinsin mi?`)) { tanks.splice(+d.deltank, 1); save(); renderTanks(); } }
-  if (d.addc != null) { tanks[d.addc].comps.push({ id: uid(), name: 'Bölme ' + (tanks[d.addc].comps.length + 1), use: 'active', shape: 'rect', L: 10, W: 8, H: 7, level: 0, cm: 0, suct: 30, mw: '' }); save(); renderTanks(); }
+  if (d.addc != null) { tanks[d.addc].comps.push({ name: 'Bölme ' + (tanks[d.addc].comps.length + 1), use: 'active', shape: 'rect', L: 10, W: 8, H: 7, level: 0, cm: 0, suct: 30, mw: '' }); save(); renderTanks(); }
   if (d.delc) { const [t, c] = d.delc.split('-'); tanks[t].comps.splice(+c, 1); save(); renderTanks(); }
 });
-$('addTank').onclick = () => { W().tanks.push({ id: uid(), name: 'Tank ' + (W().tanks.length + 1), comps: [{ id: uid(), name: 'Bölme 1', use: 'active', shape: 'rect', L: 10, W: 8, H: 7, level: 0, cm: 0, suct: 30, mw: '' }] }); save(); renderTanks(); };
+$('addTank').onclick = () => { W().tanks.push({ id: uid(), name: 'Tank ' + (W().tanks.length + 1), comps: [{ name: 'Bölme 1', use: 'active', shape: 'rect', L: 10, W: 8, H: 7, level: 0, cm: 0, suct: 30, mw: '' }] }); save(); renderTanks(); };
 $('loadMR').onclick = () => {
   const w = W(), has = (w.tanks || []).length;
-  if (has && !confirm('Mevcut tank listesi silinip MR 8000 tank seti (Elek, Çökelme, Rezerv-1, Rezerv-2, Hopper, Emiş-1, Emiş-2) yüklensin mi?')) return;
+  if (has && !confirm('Mevcut tank listesi silinip MR 8000 tank seti (Elek, Çökelme, Emiş-1, Emiş-2, Hopper, Rezerv-1, Rezerv-2, Su-1, Su-2) yüklensin mi?')) return;
   w.tanks = mr8000Tanks(); save(); renderTanks(); toast('MR 8000 tank seti yüklendi');
 };
 
@@ -806,7 +702,7 @@ function renderSeviye() {
 }
 function renderLvTotals() {
   const t = tankTotals();
-  $('lvTotals').innerHTML = totalsHtml(t, 1); renderHdrTot();
+  $('lvTotals').innerHTML = totalsHtml(t, 1);
 }
 function parseCalTable(s) {
   return s.split(/\r?\n/).map(l => { l = l.trim(); if (!l) return null;
@@ -1219,233 +1115,6 @@ $('balSave').onclick = () => {
   w.balDraft = {}; save(); renderBalance(); toast('Günlük hacim dengesi kaydedildi');
 };
 $('balHist').addEventListener('click', e => { const d = e.target.dataset.delb; if (d != null && confirm('Bu kayıt silinsin mi?')) { W().balances.splice(+d, 1); save(); renderBalance(); } });
-/* =========================================================
-   KİMYASAL ETKİSİ (tahmini)
-   ========================================================= */
-const EP = [
-  { k: 'mw', n: 'Yoğunluk', dens: true }, { k: 'fv', n: 'Huni vis.', u: 'sn/qt', d: 0 }, { k: 'pv', n: 'PV', u: 'cP', d: 0 }, { k: 'yp', n: 'YP', u: 'lb/100ft²', d: 0 },
-  { k: 'g10s', n: 'Jel 10 sn', u: 'lb/100ft²', d: 0 }, { k: 'g10m', n: 'Jel 10 dk', u: 'lb/100ft²', d: 0 }, { k: 'fl', n: 'API filtrat', u: 'ml/30dk', d: 1 },
-  { k: 'ph', n: 'pH', u: '', d: 1 }, { k: 'pf', n: 'Pf', u: 'ml', d: 2 }, { k: 'mbt', n: 'MBT', u: 'ppb', d: 1 }, { k: 'sol', n: 'Katı', u: '%', d: 1 },
-  { k: 'cl', n: 'Klorür', u: 'mg/L', d: 0 }, { k: 'ca', n: 'Kalsiyum', u: 'mg/L', d: 0 }, { k: 'th', n: 'Top. sertlik', u: 'mg/L', d: 0 }, { k: 'kcl', n: 'KCl', u: '% ağ.', d: 2 }
-];
-const EFK = ['pv', 'yp', 'fv', 'g10s', 'g10m', 'fl', 'ph', 'pf', 'mbt', 'cl', 'ca', 'kcl'];
-const EFN = { pv: 'PV', yp: 'YP', fv: 'FV', g10s: 'Jel10s', g10m: 'Jel10d', fl: 'Filtrat', ph: 'pH', pf: 'Pf', mbt: 'MBT', cl: 'Cl', ca: 'Ca', kcl: 'KCl%' };
-const EFF_DEFAULT = () => [
-  { id: 'barit', n: 'Barit', sg: 4.2, kg: 1500, solid: true, rx: 'barit|barite', e: { pv: 0.1 } },
-  { id: 'caco3', n: 'CaCO₃ (ince/orta)', sg: 2.7, kg: 1000, solid: true, rx: 'caco3|kalsiyum karbonat|kalsit', e: { pv: 0.1 } },
-  { id: 'bent', n: 'Bentonit', sg: 2.6, kg: 1000, solid: true, rx: 'bentonit', e: { pv: 0.7, yp: 1.5, fv: 2, g10s: 0.4, g10m: 0.8, fl: -0.4, mbt: 1 } },
-  { id: 'xcd', n: 'XCD', sg: 1.5, kg: 25, rx: 'xcd|xc polimer|ksantan|xanthan', e: { pv: 3, yp: 14, fv: 35, g10s: 6, g10m: 8 } },
-  { id: 'pacr', n: 'PAC R', sg: 1.6, kg: 25, rx: 'pac[ -]?r\\b|pac[ -]?reg', e: { pv: 5, yp: 6, fv: 12, g10s: 1, g10m: 1, fl: -3 } },
-  { id: 'paclv', n: 'PAC LV', sg: 1.6, kg: 25, rx: 'pac[ -]?lv', e: { pv: 4, yp: 1, fv: 4, fl: -3 } },
-  { id: 'cmc', n: 'CMC LV', sg: 1.6, kg: 25, rx: 'cmc', e: { pv: 3, yp: 0.5, fv: 3, fl: -2.5 } },
-  { id: 'nisasta', n: 'Modifiye nişasta', sg: 1.5, kg: 25, rx: 'ni[sş]asta|starch', e: { pv: 1.5, yp: 0.5, fv: 2, fl: -1.5 } },
-  { id: 'kostik', n: 'Kostik soda', sg: 2.13, kg: 25, rx: 'kostik|caustic|naoh', e: { ph: 2, pf: 2.5 } },
-  { id: 'soda', n: 'Soda külü', sg: 2.5, kg: 25, rx: 'soda k[uü]l|soda ash|na2co3', e: { ca: -1077, ph: 0.3 } },
-  { id: 'bikarb', n: 'Sodyum bikarbonat', sg: 2.2, kg: 25, rx: 'bikarbonat|bicarb|nahco3', e: { ca: -1359, ph: -0.2 } },
-  { id: 'sitrik', n: 'Sitrik asit', sg: 1.66, kg: 25, rx: 'sitrik|citric', e: { ph: -2, pf: -1.5 } },
-  { id: 'kcl', n: 'KCl', sg: 1.98, kg: 1000, rx: '^kcl|potasyum klor', e: { cl: 1357, kcl: 0.28 } },
-  { id: 'nacl', n: 'NaCl (tuz)', sg: 2.16, kg: 1000, rx: 'nacl|sodyum klor|^tuz', e: { cl: 1731 } },
-  { id: 'lcm', n: 'Kaçak selülozu / mika', sg: 1.5, kg: 25, solid: true, rx: 'sel[uü]loz|mica|mika|lcm', e: { pv: 0.2, fv: 0.5 } }
-];
-const effLib = () => { if (!Array.isArray(DB.effLib)) DB.effLib = EFF_DEFAULT(); return DB.effLib; };
-const effOf = id => effLib().find(c => c.id === id);
-function effStock(c) { // kimyasala uyan stok kalemi
-  if (!c) return null; let re = null; try { re = new RegExp(c.rx || '^$', 'i'); } catch (e) {}
-  const nm = (c.n || '').toLocaleLowerCase('tr-TR');
-  return W().stock.find(s => (re && re.test(s.name)) || s.name.toLocaleLowerCase('tr-TR') === nm) || null;
-}
-const effPkg = c => { const s = effStock(c); return s ? { kg: +s.kg || 1, unit: s.unit, s } : { kg: +c.kg || 25, unit: (+c.kg || 25) >= 500 ? 'big bag' : 'torba', s: null }; };
-const effCur = () => { const w = W(); w.effCur = w.effCur || {}; return w.effCur; };
-const effLines = () => { const w = W(); if (!Array.isArray(w.effLines)) w.effLines = [{ cid: 'paclv', amt: 4, u: 'pkg' }, { cid: 'xcd', amt: 2, u: 'pkg' }]; return w.effLines; };
-const effTgt = () => { const w = W(); w.effTgt = w.effTgt || {}; return w.effTgt; };
-const epOut = (p, v) => p.dens ? fromPpg(v) : v, epD = p => p.dens ? (isPcf() ? 1 : 2) : p.d, epU = p => p.dens ? dLbl() : p.u;
-/* tahmin modeli: önce kimyasallar (V bbl'ye göre ppb), sonra su ile seyreltme */
-function effProject(cur, V, adds, water) {
-  const out = { ...cur }, sum = {}; let gal = 42 * V, mass = isFinite(cur.mw) ? cur.mw * gal : NaN, solB = isFinite(cur.sol) ? cur.sol / 100 * V : NaN;
-  adds.forEach(({ c, lb }) => {
-    if (!c || !(lb > 0)) return; const ppb = lb / V;
-    Object.entries(c.e || {}).forEach(([k, fk]) => { if (isFinite(+fk) && +fk) sum[k] = (sum[k] || 0) + (+fk) * ppb; });
-    const g = lb / (8.33 * (+c.sg || 2)); gal += g; mass += lb; if (c.solid && isFinite(solB)) solB += g / 42;
-  });
-  Object.entries(sum).forEach(([k, d]) => {
-    if (!isFinite(cur[k])) return;
-    if (k === 'fl') out.fl = cur.fl > 0 ? cur.fl * Math.exp(d / cur.fl) : cur.fl;
-    else out[k] = cur[k] + d;
-  });
-  if (isFinite(out.ca)) out.ca = Math.max(0, out.ca);
-  if (isFinite(cur.th) && isFinite(cur.ca) && sum.ca) out.th = Math.max(0, cur.th + (out.ca - cur.ca));
-  ['cl', 'pf', 'pv', 'yp', 'fv', 'g10s', 'g10m', 'mbt', 'kcl'].forEach(k => { if (isFinite(out[k])) out[k] = Math.max(0, out[k]); });
-  if (isFinite(out.ph)) out.ph = Math.min(13.5, Math.max(2, out.ph));
-  if (isFinite(out.fv)) out.fv = Math.max(26, out.fv);
-  if (isFinite(mass)) out.mw = mass / gal;
-  const Vc = gal / 42; if (isFinite(solB)) out.sol = solB / Vc * 100;
-  if (water > 0) {
-    const r = Vc / (Vc + water), r2 = r * r;
-    if (isFinite(out.mw)) out.mw = (out.mw * gal + 8.33 * 42 * water) / (gal + 42 * water);
-    ['mbt', 'cl', 'ca', 'th', 'kcl', 'sol', 'pf'].forEach(k => { if (isFinite(out[k])) out[k] *= r; });
-    ['yp', 'g10s', 'g10m'].forEach(k => { if (isFinite(out[k])) out[k] *= r2; });
-    if (isFinite(out.pv)) out.pv = 1 + (out.pv - 1) * r2;
-    if (isFinite(out.fv)) out.fv = 26 + (out.fv - 26) * r2;
-    if (isFinite(out.fl)) out.fl = out.fl / r;
-    gal += 42 * water;
-  }
-  return { out, vol: gal / 42 };
-}
-function effReadCur() {
-  const c = effCur(), cur = {};
-  EP.forEach(p => { const v = num(c[p.k]); if (isFinite(v)) cur[p.k] = v; }); // mw içeride ppg
-  return cur;
-}
-function renderEtkiInputs() {
-  const c = effCur(), t = effTgt(), lib = effLib(), rev = $('e-mode').value === 'rev';
-  $('e-fwdBox').hidden = rev; $('e-revBox').hidden = !rev;
-  const val = (p, v) => v == null || v === '' || !isFinite(num(v)) ? '' : p.dens ? round(fromPpg(num(v)), isPcf() ? 1 : 2) : v;
-  $('e-cur').innerHTML = EP.map(p => `<label>${p.n} <small>${epU(p) ? '(' + epU(p) + ')' : ''}</small><input data-ec="${p.k}" type="text" inputmode="decimal" value="${val(p, c[p.k])}"></label>`).join('');
-  $('e-tgt').innerHTML = EP.map(p => `<label>${p.n} <small>${epU(p) ? '(' + epU(p) + ')' : ''}</small><input data-et="${p.k}" type="text" inputmode="decimal" placeholder="${c[p.k] != null && c[p.k] !== '' ? 'şu an ' + val(p, c[p.k]) : ''}" value="${val(p, t[p.k])}"></label>`).join('');
-  $('e-lines').innerHTML = effLines().map((l, i) => l.water ? `
-    <div class="sec"><div class="sec-h"><b>Su ile seyreltme</b><button class="btn ghost" data-edel="${i}">Sil</button></div>
-      <div class="grid"><label>Su <small>(bbl)</small><input data-ei="${i}" data-ek="amt" type="text" inputmode="decimal" value="${l.amt ?? ''}"></label></div></div>` : `
-    <div class="sec"><div class="sec-h"><b>${i + 1}. kimyasal</b><button class="btn ghost" data-edel="${i}">Sil</button></div>
-      <div class="grid">
-        <label>Kimyasal<select data-ei="${i}" data-ek="cid">${lib.map(c => `<option value="${c.id}"${c.id === l.cid ? ' selected' : ''}>${esc(c.n)}</option>`).join('')}</select></label>
-        <label>Miktar<input data-ei="${i}" data-ek="amt" type="text" inputmode="decimal" value="${l.amt ?? ''}"></label>
-        <label>Birim<select data-ei="${i}" data-ek="u"><option value="pkg"${l.u === 'pkg' ? ' selected' : ''}>${esc(effPkg(effOf(l.cid) || lib[0]).unit)} (${f(effPkg(effOf(l.cid) || lib[0]).kg, 0)} kg)</option><option value="kg"${l.u === 'kg' ? ' selected' : ''}>kg</option><option value="ppb"${l.u === 'ppb' ? ' selected' : ''}>ppb</option></select></label>
-      </div></div>`).join('') || '<p class="note">Kimyasal satırı ekle.</p>';
-  renderEffLib();
-}
-function renderEffLib() {
-  if (!$('e-libBox').open) return;
-  $('e-lib').innerHTML = `<tr><th>Kimyasal</th><th class="n">SG</th><th class="n">Ambalaj kg</th><th>Katı</th>${EFK.map(k => `<th class="n">${EFN[k]}</th>`).join('')}<th></th></tr>`
-    + effLib().map((c, i) => `<tr><td><input data-li="${i}" data-lk="n" type="text" value="${esc(c.n)}" style="min-width:130px"></td>
-      <td><input data-li="${i}" data-lk="sg" type="text" inputmode="decimal" value="${c.sg ?? ''}" style="min-width:56px;width:60px"></td>
-      <td><input data-li="${i}" data-lk="kg" type="text" inputmode="decimal" value="${c.kg ?? ''}" style="min-width:64px;width:70px"></td>
-      <td><input data-li="${i}" data-lk="solid" type="checkbox"${c.solid ? ' checked' : ''} style="width:auto;min-width:0"></td>
-      ${EFK.map(k => `<td><input data-li="${i}" data-lk="e.${k}" type="text" inputmode="decimal" value="${c.e && c.e[k] != null ? c.e[k] : ''}" style="min-width:58px;width:64px"></td>`).join('')}
-      <td><button class="btn ghost" data-ldel="${i}">Sil</button></td></tr>`).join('');
-}
-$('e-libBox').addEventListener('toggle', renderEffLib);
-$('e-lib').addEventListener('change', e => {
-  const i = e.target.dataset.li, k = e.target.dataset.lk; if (i == null) return; const c = effLib()[i];
-  if (k === 'n') c.n = e.target.value; else if (k === 'solid') c.solid = e.target.checked;
-  else if (k.startsWith('e.')) { const v = num(e.target.value); c.e = c.e || {}; if (isFinite(v)) c.e[k.slice(2)] = v; else delete c.e[k.slice(2)]; }
-  else { const v = num(e.target.value); if (isFinite(v)) c[k] = v; }
-  save(); renderEtkiInputs(); calcEtki();
-});
-$('e-lib').addEventListener('click', e => { const i = e.target.dataset.ldel; if (i == null) return; const c = effLib()[i]; if (!confirm(`"${c.n}" katsayı listesinden silinsin mi?`)) return; effLib().splice(+i, 1); save(); renderEtkiInputs(); calcEtki(); });
-$('e-libAdd').onclick = () => { effLib().push({ id: 'u' + uid(), n: 'Yeni kimyasal', sg: 1.5, kg: 25, rx: '', e: {} }); save(); renderEffLib(); };
-$('e-libReset').onclick = () => { if (!confirm('Tüm etki katsayıları varsayılan değerlere dönsün mü?')) return; DB.effLib = EFF_DEFAULT(); save(); renderEtkiInputs(); calcEtki(); };
-$('e-cur').addEventListener('input', e => { const k = e.target.dataset.ec; if (!k) return; const p = EP.find(x => x.k === k), v = num(e.target.value); effCur()[k] = isFinite(v) ? (p.dens ? toPpg(v) : v) : ''; save(); calcEtki(); });
-$('e-tgt').addEventListener('input', e => { const k = e.target.dataset.et; if (!k) return; const p = EP.find(x => x.k === k), v = num(e.target.value); effTgt()[k] = isFinite(v) ? (p.dens ? toPpg(v) : v) : ''; save(); calcEtki(); });
-$('e-lines').addEventListener('input', e => { const d = e.target.dataset; if (d.ei == null) return; const l = effLines()[d.ei]; l[d.ek] = d.ek === 'amt' ? num(e.target.value) : e.target.value; save(); if (d.ek === 'cid') renderEtkiInputs(); calcEtki(); });
-$('e-lines').addEventListener('change', e => { const d = e.target.dataset; if (d.ek === 'cid' || d.ek === 'u') { effLines()[d.ei][d.ek] = e.target.value; save(); renderEtkiInputs(); calcEtki(); } });
-$('e-lines').addEventListener('click', e => { const i = e.target.dataset.edel; if (i == null) return; effLines().splice(+i, 1); save(); renderEtkiInputs(); calcEtki(); });
-$('e-add').onclick = () => { effLines().push({ cid: effLib()[0].id, amt: 1, u: 'pkg' }); save(); renderEtkiInputs(); calcEtki(); };
-$('e-water').onclick = () => { if (effLines().some(l => l.water)) { toast('Su satırı zaten var.'); return; } effLines().push({ water: true, amt: 20 }); save(); renderEtkiInputs(); calcEtki(); };
-$('e-mode').addEventListener('change', () => { renderEtkiInputs(); });
-$('e-vsrc').addEventListener('change', () => {
-  const v = $('e-vsrc').value; if (!v) return; const t = tankTotals(), hole = wellRes.pipe + wellRes.ann;
-  const vol = v === 'active' ? t.active + hole : v === 'sys' ? t.active + t.reserve + hole : v === 'tanks' ? t.active : custVal();
-  if (!(vol > 0)) { toast(v === 'cust' ? 'Özel toplam henüz ayarlanmadı (Tanklar sekmesi).' : 'Bu hacim şu an 0.'); return; }
-  $('e-v').value = round(vol, 1); W().vals['e-v'] = $('e-v').value; save(); calcAll();
-});
-function effFill(quiet) {
-  const last = sortedReps().slice(-1)[0]; if (!last) { if (!quiet) toast('Kayıtlı ölçüm yok.'); return; }
-  const c = effCur(); let k = 0; EP.forEach(p => { const v = last.v[p.k]; if (v != null && isFinite(v)) { c[p.k] = v; k++; } });
-  save(); renderEtkiInputs(); calcEtki(); if (!quiet) toast(k ? `${k} değer ${fmtDate(last.time)} ölçümünden alındı` : 'Son ölçümde bu değerler yok.');
-}
-$('e-fill').onclick = () => effFill(false);
-let effPlan = [];
-function effAdds(V) {
-  effPlan = []; let water = 0;
-  const adds = effLines().map(l => {
-    if (l.water) { water += +l.amt > 0 ? +l.amt : 0; return null; }
-    const c = effOf(l.cid); if (!c || !(+l.amt > 0)) return null; const pk = effPkg(c);
-    const kg = l.u === 'ppb' ? +l.amt * V * LB_KG : l.u === 'kg' ? +l.amt : +l.amt * pk.kg, lb = kg / LB_KG;
-    effPlan.push({ c, kg, units: pk.s ? kg / pk.kg : null, pk });
-    return { c, lb };
-  }).filter(Boolean);
-  return { adds, water };
-}
-const epFmt = (p, v) => isFinite(v) ? f(epOut(p, v), epD(p)) : '—';
-function effDiffRows(cur, out, onlyK) {
-  return EP.filter(p => isFinite(cur[p.k]) && isFinite(out[p.k]) && p.k !== onlyK).map(p => {
-    const d = out[p.k] - cur[p.k], tiny = Math.abs(epOut(p, d)) < Math.pow(10, -epD(p)) / 2;
-    return tiny ? null : { p, d };
-  }).filter(Boolean);
-}
-function calcEtki() {
-  if (!$('r-etki')) return;
-  const V = n('e-v'), cur = effReadCur(), rev = $('e-mode').value === 'rev';
-  if (!(V > 0)) return $('r-etki').innerHTML = '<h3>Sonuç</h3>' + err('Çamur hacmini gir.');
-  if (!Object.keys(cur).length) return $('r-etki').innerHTML = '<h3>Sonuç</h3>' + err('Mevcut çamur değerlerini gir veya "Son ölçümden doldur"a bas.');
-  if (!rev) {
-    const { adds, water } = effAdds(V), r = effProject(cur, V, adds, water);
-    let o = '<h3>Tahmini yeni çamur</h3>';
-    o += EP.filter(p => isFinite(cur[p.k])).map(p => {
-      const a = cur[p.k], b = r.out[p.k], d = b - a, show = Math.abs(epOut(p, d)) >= Math.pow(10, -epD(p)) / 2;
-      return `<div class="row${show ? ' big' : ''}"><span class="k">${p.n}</span><span class="v">${show ? `<em style="margin:0 6px 0 0">${epFmt(p, a)} →</em>` : ''}${epFmt(p, b)}<em>${epU(p)}${show ? ` · ${d > 0 ? '+' : ''}${f(epOut(p, d), epD(p))}` : ''}</em></span></div>`;
-    }).join('');
-    o += '<div class="sp"></div><h3>Malzeme</h3>';
-    let short = 0;
-    o += effPlan.map(x => { const lowS = x.pk.s && +x.pk.s.qty < x.units - 1e-9; if (lowS) short++;
-      return row(`${esc(x.c.n)} ${x.pk.s ? `<span class="tag" style="${lowS ? 'color:#F08B73' : ''}">stok ${f(x.pk.s.qty, 0)}</span>` : ''}`, f(x.kg, 0), `kg · ${f(x.kg / LB_KG / V, 2)} ppb${x.pk.s ? ` · ${f(x.units, x.units % 1 ? 1 : 0)} ${esc(x.pk.unit)}` : ` · ${f(x.kg / x.pk.kg, 1)} ${x.pk.unit}`}`); }).join('') || '<p class="note" style="color:#93A1AB">Kimyasal yok.</p>';
-    if (water) o += row('Su', f(water, 1), 'bbl');
-    o += row('Son hacim', f(r.vol, 1), 'bbl') + (short ? err(`${short} kimyasalda stok yetersiz.`) : '');
-    o += `<div class="btns"><button class="btn" id="e-use"${effPlan.some(x => x.pk.s) ? '' : ' disabled'}>Stoktan düş</button></div>
-      <p class="note" style="color:#93A1AB">Tahmindir. Ekledikten ve çamur bir devir döndükten sonra ölç; fark çıkarsa katsayıları düzelt.</p>`;
-    $('r-etki').innerHTML = o;
-    $('e-use').onclick = () => {
-      const list = effPlan.filter(x => x.pk.s && x.units > 0); if (!list.length) return;
-      if (!confirm('Şu kullanımlar stoktan düşülsün mü?\n' + list.map(x => `• ${x.pk.s.name}: ${round(x.units, 2)} ${x.pk.unit}`).join('\n'))) return;
-      list.forEach(x => stockUse(x.pk.s.id, round(x.units, 2), `Kimyasal ilavesi · ${f(V, 0)} bbl`)); fillStockSelects(); toast('Stoktan düşüldü'); calcEtki();
-    };
-    return;
-  }
-  // ters hesap: hedef için gereken
-  const tg = effTgt(); let o = '<h3>Gereken ilave (tahmini)</h3>', any = false;
-  EP.forEach(p => {
-    const t = num(tg[p.k]), a = cur[p.k]; if (!isFinite(t)) return;
-    any = true;
-    if (!isFinite(a)) { o += `<h3 style="margin-top:14px">${p.n}</h3>` + err('Mevcut değeri gir.'); return; }
-    const D = t - a; o += `<h3 style="margin-top:14px">${p.n}: ${epFmt(p, a)} → ${epFmt(p, t)} ${epU(p)}</h3>`;
-    if (Math.abs(D) < 1e-9) { o += '<p class="note" style="color:#93A1AB">Zaten hedefte.</p>'; return; }
-    const cands = [];
-    if (p.k === 'mw') {
-      if (D > 0) effLib().filter(c => c.solid && +c.sg >= 2.65 && !(+(c.e || {}).mbt) && 8.33 * c.sg > t).forEach(c => { const dm = 8.33 * c.sg, lb = V * 42 * dm * D / (dm - t); cands.push({ c, lb }); });
-      else cands.push({ water: V * (a - t) / (t - 8.33) });
-    } else {
-      effLib().forEach(c => {
-        let fk = +(c.e || {})[p.k === 'th' ? 'ca' : p.k]; if (!isFinite(fk) || !fk) return;
-        if (p.k === 'fl') { if (fk < 0 && D < 0 && t > 0) cands.push({ c, lb: a * Math.log(t / a) / fk * V }); return; }
-        if (Math.sign(fk) === Math.sign(D)) cands.push({ c, lb: D / fk * V });
-      });
-      if (D < 0) { // su ile seyreltme
-        let r = NaN;
-        if (['mbt', 'cl', 'ca', 'th', 'kcl', 'sol', 'pf'].includes(p.k)) r = t / a;
-        else if (['yp', 'g10s', 'g10m'].includes(p.k)) r = Math.sqrt(t / a);
-        else if (p.k === 'pv' && a > 1 && t > 1) r = Math.sqrt((t - 1) / (a - 1));
-        else if (p.k === 'fv' && a > 26 && t > 26) r = Math.sqrt((t - 26) / (a - 26));
-        if (r > 0 && r < 1) cands.push({ water: V * (1 / r - 1) });
-      }
-    }
-    if (!cands.length) { o += `<p class="note" style="color:#93A1AB">Katsayı listesinde bunu ${D > 0 ? 'artıran' : 'düşüren'} kimyasal yok.${p.k === 'ph' && D < 0 ? ' pH düşürmek için sitrik asit veya bikarbonat satırını kontrol et.' : ''}</p>`; return; }
-    cands.sort((x, y) => (x.water != null) - (y.water != null) || x.lb - y.lb);
-    const chem = cands.filter(x => x.water == null), minLb = chem.length ? chem[0].lb : 0;
-    const shown = [...chem.filter(x => x.lb <= minLb * 4).slice(0, 3), ...cands.filter(x => x.water != null)];
-    shown.forEach(x => {
-      const r = x.water != null ? effProject(cur, V, [], x.water) : effProject(cur, V, [{ c: x.c, lb: x.lb }], 0);
-      const side = effDiffRows(cur, r.out, p.k).map(({ p: q, d }) => `${q.n} ${d > 0 ? '+' : ''}${f(epOut(q, d), epD(q))}`).join(' · ');
-      if (x.water != null) { o += row('Su ile seyreltme', f(x.water, 1), 'bbl', true) + (side ? `<p class="note" style="color:#93A1AB;margin:2px 0 6px">Yan etki: ${side}</p>` : ''); return; }
-      const kg = x.lb * LB_KG, pk = effPkg(x.c), units = kg / pk.kg;
-      o += row(`${esc(x.c.n)}${pk.s ? ` <span class="tag">stok ${f(pk.s.qty, 0)}</span>` : ''}`, f(kg, 0), `kg · ${f(x.lb / V, 2)} ppb`, true)
-        + row('', f(units, units < 10 ? 1 : 0), `${esc(pk.unit)} (${f(pk.kg, 0)} kg)`)
-        + (side ? `<p class="note" style="color:#93A1AB;margin:2px 0 6px">Yan etki: ${side}</p>` : '');
-    });
-  });
-  if (!any) o += '<p class="note" style="color:#93A1AB">Soldaki "İstenen değerler"e en az bir hedef yaz.</p>';
-  else o += '<p class="note" style="color:#93A1AB">Her satır tek başına uygulandığındaki miktardır. Tahmindir; ilaveyi parça parça yapıp ölçerek ilerle.</p>';
-  $('r-etki').innerHTML = o;
-}
 function calcTrip() {
   const od = n('t-od'), id = n('t-id'), cas = n('t-cas'), sl = toFt(n('t-sl')), ns = n('t-n') || 0, mw = nd('t-mw'),
     wdp = n('t-wdp'), ldp = toFt(n('t-ldp')), wdc = n('t-wdc') || 0, ldc = toFt(n('t-ldc')) || 0, pull = n('t-pull'), str = n('t-str');
@@ -1640,10 +1309,9 @@ async function exportExcel(w, only) {
       ...w.secs.map(s => [s.name, s.dh, s.od, s.id, +(+s.len).toFixed(1), +((s.id ** 2) / 1029.4 * s.len).toFixed(2), +(((s.dh ** 2) - (s.od ** 2)) / 1029.4 * s.len).toFixed(2)])], [28, 12, 10, 10, 12, 12, 12]);
     const reps = [...w.reports].sort((a, b) => (a.time || '').localeCompare(b.time || ''));
     const ev = (p, v) => v == null || v === '' ? '' : p.dens ? +fromPpg(+v).toFixed(pD(p)) : v;
-    const XP = ALLPROPS.filter(p => PROPS.includes(p) || reps.some(r => r.v[p.k] != null && r.v[p.k] !== ''));
-    add('Çamur ölçümleri', [['Tarih', 'Derinlik (ft)', 'Numune', ...XP.map(p => `${p.n}${pU(p) ? ' (' + pU(p) + ')' : ''}`), 'Not'],
-      ['Hedef (alt–üst)', '', '', ...XP.map(p => { const t = w.targets[p.k] || {}; return [ev(p, t.lo), ev(p, t.hi)].join('–'); }), ''],
-      ...reps.map(r => [fmtDate(r.time), r.depth ? +(+r.depth).toFixed(0) : '', r.src || '', ...XP.map(p => ev(p, r.v[p.k])), r.note || ''])], [16, 11, 12, ...XP.map(() => 11), 30]);
+    add('Çamur ölçümleri', [['Tarih', 'Derinlik (ft)', 'Numune', ...PROPS.map(p => `${p.n}${pU(p) ? ' (' + pU(p) + ')' : ''}`), 'Not'],
+      ['Hedef (alt–üst)', '', '', ...PROPS.map(p => { const t = w.targets[p.k] || {}; return [ev(p, t.lo), ev(p, t.hi)].join('–'); }), ''],
+      ...reps.map(r => [fmtDate(r.time), r.depth ? +(+r.depth).toFixed(0) : '', r.src || '', ...PROPS.map(p => ev(p, r.v[p.k])), r.note || ''])], [16, 11, 12, ...PROPS.map(() => 11), 30]);
     add('Stok', [['Kimyasal', 'Mevcut', 'Birim', 'kg/birim', 'Asgari', 'Durum'], ...w.stock.map(s => [s.name, +s.qty, s.unit, +s.kg, +s.min, +s.qty <= +s.min ? 'Sipariş ver' : 'Yeterli'])], [22, 10, 8, 10, 10, 12]);
     add('Stok hareketleri', [['Tarih', 'Kimyasal', 'İşlem', 'Miktar', 'Birim', 'Not'], ...w.stockLog.map(l => [fmtDate(l.t), l.item, l.kind, l.qty, l.unit, l.note])], [16, 20, 10, 10, 8, 30]);
     add('Tanklar', [['Tank', 'Bölme', 'Kullanım', 'Yöntem', 'Katsayılar', 'Seviye (cm)', 'Emiş (cm)', 'Hacim (bbl)', 'Emiş üstü (bbl)', `MW (${dLbl()})`],
@@ -1666,8 +1334,7 @@ async function exportExcel(w, only) {
    ÇİZİM DÖNGÜSÜ
    ========================================================= */
 function calcAll() {
-  [calcHacim, calcPompa, calcAgir, calcSeyr, calcHid, calcKill, calcCim, calcHidr, calcTrip, calcHazir, calcKati, calcEtki].forEach(c => { try { c(); } catch (e) { console.error(e); } });
-  try { renderHdrTot(); } catch (e) { console.error(e); }
+  [calcHacim, calcPompa, calcAgir, calcSeyr, calcHid, calcKill, calcCim, calcHidr, calcTrip, calcHazir, calcKati].forEach(c => { try { c(); } catch (e) { console.error(e); } });
 }
 function renderAll(full) {
   renderHeader();
@@ -1682,13 +1349,11 @@ function renderAll(full) {
     if (t === 'stok') renderStok();
     if (t === 'hazir') { fillTankSelect(); renderHazirRows(); calcHazir(); }
     if (t === 'agir') { fillStockSelects(); calcAgir(); }
-    if (t === 'etki') { if (!Object.keys(effCur()).length && W().reports.length) effFill(true); renderEtkiInputs(); calcEtki(); }
     if (t === 'tally') renderTally();
   } catch (e) { console.error(e); }
 }
 
 load();
-rebuildProps();
 loadCalcInputs();
 setDUnit(dunit(), false);
 renderPropInputs();

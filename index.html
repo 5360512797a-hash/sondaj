@@ -45,13 +45,6 @@ header{background:var(--readout);color:#E4E9EC;position:sticky;top:0;z-index:5;
 .seg{display:inline-flex;border:1px solid #3A4852;border-radius:6px;overflow:hidden;flex:0 0 auto}
 .seg button{background:transparent;color:#C9D2D8;border:0;padding:6px 12px;font:600 .85rem var(--f-body);cursor:pointer}
 .seg button[aria-pressed="true"]{background:var(--readout-ink);color:#1E2A33}
-.hdrtot{display:flex;flex-wrap:wrap;gap:6px;max-width:1040px;margin:8px auto 0}
-.hdrtot::-webkit-scrollbar{display:none}
-.hdrtot button{flex:1 1 auto;display:flex;flex-direction:column;align-items:flex-start;gap:1px;min-width:0;background:#26343E;border:1px solid #33414B;color:#AEB9C0;border-radius:6px;padding:4px 9px;font:600 .62rem var(--f-body);letter-spacing:.06em;text-transform:uppercase;cursor:pointer;white-space:nowrap}
-.hdrtot button b{font:600 .95rem var(--f-num);color:var(--readout-ink);letter-spacing:0;text-transform:none}
-.hdrtot button.set b{color:#93A1AB;font:500 .8rem var(--f-body)}
-.ctgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
-.ctgrid .sec{gap:4px;padding:10px}
 #sub{display:flex;gap:2px;overflow-x:auto;max-width:1040px;margin:6px auto 0;scrollbar-width:none;-webkit-overflow-scrolling:touch}
 #sub::-webkit-scrollbar{display:none}
 #sub button{flex:0 0 auto;background:transparent;border:0;color:#AEB9C0;font:600 .98rem var(--f-display);letter-spacing:.05em;text-transform:uppercase;padding:10px 11px;cursor:pointer;border-bottom:3px solid transparent}
@@ -76,11 +69,11 @@ h4{font:700 .8rem var(--f-display);letter-spacing:.1em;text-transform:uppercase;
 label{display:flex;flex-direction:column;gap:4px;font-size:.76rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
 label small{text-transform:none;letter-spacing:0;font-weight:400}
 label.chk{flex-direction:row;align-items:center;gap:8px;text-transform:none;letter-spacing:0;font-size:.9rem;color:var(--ink);font-weight:500}
-label.chk input{width:18px;height:18px;flex:0 0 auto}
+label.chk input{width:auto}
 input,select,textarea{font:500 16px var(--f-num);background:var(--field);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:9px 10px;width:100%;min-width:0;font-variant-numeric:tabular-nums}
 input[type=text],input[type=date],input[type=datetime-local],select,textarea{font-family:var(--f-body)}
 textarea{min-height:90px;resize:vertical}
-.readout{background:var(--readout);color:#DDE4E8;border-radius:8px;padding:16px;min-width:0;position:sticky;top:calc(env(safe-area-inset-top,0px) + 160px)}
+.readout{background:var(--readout);color:#DDE4E8;border-radius:8px;padding:16px;min-width:0;position:sticky;top:calc(env(safe-area-inset-top,0px) + 120px)}
 @media (max-width:760px){.readout{position:static}}
 .readout h3{font:700 .8rem var(--f-display);letter-spacing:.12em;text-transform:uppercase;color:#93A1AB;margin:0 0 8px}
 .row{display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:7px 0;border-bottom:1px dashed #33414B}
@@ -142,8 +135,6 @@ table.sch th:first-child,table.sch td:first-child{text-align:left}
 .totals div{background:var(--bg);border-radius:6px;padding:8px 10px}
 .totals span{display:block;font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:600}
 .totals b{font:600 1.15rem var(--f-num)}
-.pcfgs{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:4px 14px}
-.pcfg{display:grid;grid-template-columns:1fr auto auto;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid var(--line)}
 .lv td input{width:92px}
 .lv td.big{font:600 1.05rem var(--f-num)}
 .lv tr.cfg td{background:var(--bg);white-space:normal}
@@ -174,7 +165,6 @@ footer{color:var(--muted);font-size:.8rem;margin-top:22px;max-width:70ch}
       </span>
     </div>
   </div>
-  <div class="hdrtot" id="hdrTot"></div>
   <nav id="sub" role="tablist" aria-label="Modüller"></nav>
 </header>
 
@@ -299,19 +289,6 @@ footer{color:var(--muted);font-size:.8rem;margin-top:22px;max-width:70ch}
       <button class="btn" id="o-save">Ölçümü kaydet</button>
       <button class="btn sec" id="o-cancel" hidden>Düzenlemeyi iptal et</button>
       <button class="btn ghost" id="o-tgtBtn">Hedef aralıklarını düzenle</button>
-      <button class="btn ghost" id="o-cfgBtn">Testleri seç / ekle</button>
-    </div>
-    <div id="o-cfg" class="sec" style="margin-top:12px" hidden>
-      <p class="hint" style="margin:0">İşaretli testler formda ve özet kartlarında görünür. Yapmadığın testlerin işaretini kaldır; eski kayıtlardaki değerleri silinmez, geçmiş tablosunda ve Excel'de görünmeye devam eder.</p>
-      <div class="btns" style="margin:0"><button class="btn ghost" id="o-cfgBasic">Sadece temel testler</button><button class="btn ghost" id="o-cfgAll">Hepsini aç</button></div>
-      <div class="pcfgs" id="o-cfgList"></div>
-      <h4 style="margin:6px 0 0">Kendi testini ekle</h4>
-      <div class="grid">
-        <label>Test adı<input id="pc-name" type="text" placeholder="Örn. Glikol, LSRV, Sülfür"></label>
-        <label>Birim<input id="pc-unit" type="text" placeholder="Örn. %, cP, mg/L"></label>
-        <label>Ondalık hane<input id="pc-d" type="text" inputmode="numeric" value="1"></label>
-      </div>
-      <div class="btns" style="margin:0"><button class="btn sec" id="o-cfgAdd">+ Testi ekle</button></div>
     </div>
     <div id="o-tgt" class="sec" style="margin-top:12px" hidden>
       <p class="hint" style="margin:0">Programdaki (olması gereken) alt ve üst değerleri gir. Boş bırakılan sınır kontrol edilmez.</p>
@@ -331,27 +308,16 @@ footer{color:var(--muted);font-size:.8rem;margin-top:22px;max-width:70ch}
     <div class="tank-svg" id="tankSvg"></div>
     <div class="legend">
       <span><i style="background:var(--u-active)"></i>Aktif</span><span><i style="background:var(--u-reserve)"></i>Rezerv</span>
-      <span><i style="background:var(--u-trip)"></i>Trip</span><span><i style="background:var(--u-settle)"></i>Çökeltme / kum</span><span><i style="background:var(--u-other)"></i>Diğer</span><span>Kesikli çizgi: emiş seviyesi</span>
+      <span><i style="background:var(--u-trip)"></i>Trip</span><span><i style="background:var(--u-settle)"></i>Çökeltme / kum</span><span><i style="background:var(--u-other)"></i>Diğer / su</span><span>Kesikli çizgi: emiş seviyesi</span>
     </div>
     <div class="totals" id="tankTotals"></div>
-  </div>
-  <div class="card" id="ctCard">
-    <h2>Özel toplam hacim</h2>
-    <p class="hint">Üstte "Toplam sistem"in yanında görünen ikinci toplamı burada belirle: istediğin tankları veya bölmeleri işaretle, istersen kuyu içi hacmi ve elle bir ek hacim ekle. Toplam sistem = aktif + rezerv tanklar + kuyu içi.</p>
-    <div class="grid">
-      <label>Toplamın adı<input id="ct-name" type="text" placeholder="Örn. Aktif + Hopper"></label>
-      <label>Ek hacim <small>(bbl, örn. premix, trip tank)</small><input id="ct-extra" type="text" inputmode="decimal" value="0"></label>
-      <label class="chk" style="align-self:end"><input id="ct-hole" type="checkbox"> Kuyu içi hacmi ekle (dizi içi + anülüs)</label>
-    </div>
-    <div class="ctgrid" id="ctList" style="margin-top:12px"></div>
-    <div class="totals" id="ctOut"></div>
   </div>
   <div class="card">
     <h2>Tanklar ve bölmeler</h2>
     <p class="hint">Seviyeyi <b>cm</b> olarak gir. <b>Emiş</b> sütunu pompanın çekemediği alt seviyedir (MR 8000'de 30 cm); "Emiş üstü" o seviyenin üstündeki kullanılabilir hacimdir. cm → varil katsayılarını <b>Seviye (cm)</b> sekmesindeki <b>Ayar</b> düğmesinden değiştirebilirsin. Boy/en/yükseklik yalnızca "ölçülerden" yönteminde kullanılır.</p>
     <div class="secs" id="tankEdit"></div>
     <div class="btns"><button class="btn" id="addTank">+ Tank ekle</button><button class="btn sec" id="loadMR">MR 8000 tank setini yükle</button></div>
-    <p class="note">MR 8000 seti: Elek, Çökelme, Rezerv-1, Rezerv-2, Hopper, Emiş-1, Emiş-2. Eğimli tabanlı bölmeler 0–80, 80–115 ve 115–225 cm arası ayrı katsayıyla hesaplanır.</p>
+    <p class="note">MR 8000 seti: Elek, Çökelme, Emiş-1, Emiş-2, Hopper, Rezerv-1, Rezerv-2 ve iki su tankı. Eğimli tabanlı bölmeler 0–80, 80–115 ve 115–225 cm arası ayrı katsayıyla hesaplanır.</p>
   </div>
 </section>
 
@@ -477,47 +443,6 @@ footer{color:var(--muted);font-size:.8rem;margin-top:22px;max-width:70ch}
 </section>
 
 <!-- ================= HESAP ================= -->
-<section class="tool" id="t-etki" hidden>
-  <div class="card">
-    <h2>Kimyasal etkisi</h2>
-    <p class="hint">Sisteme ekleyeceğin kimyasalların çamuru <b>tahminen</b> nasıl değiştireceğini gösterir ya da istediğin değişim için hangi kimyasaldan ne kadar gerektiğini hesaplar. Yoğunluk, katı, klorür, kalsiyum ve KCl kütle dengesi ve kimyasal oranlarla hesaplanır; viskozite, filtrat ve pH saha katsayılarıyla tahmindir. Katsayıları kendi sahana göre aşağıdan düzelt.</p>
-    <div class="grid">
-      <label style="grid-column:1/-1">Hesap<select id="e-mode">
-        <option value="fwd">Bu kimyasalları eklersem ne olur?</option>
-        <option value="rev">Bu değişim için ne eklemeliyim?</option>
-      </select></label>
-      <label>Çamur hacmi <small>(bbl)</small><input id="e-v" type="text" inputmode="decimal" value="800"></label>
-      <label>Hacmi al<select id="e-vsrc"><option value="">— elle gir —</option><option value="active">Aktif sistem (tank + kuyu)</option><option value="sys">Toplam sistem</option><option value="cust">Özel toplam</option><option value="tanks">Sadece aktif tanklar</option></select></label>
-    </div>
-    <h4>Mevcut çamur</h4>
-    <div class="btns" style="margin:0 0 8px"><button class="btn ghost" id="e-fill">Son ölçümden doldur</button></div>
-    <div class="grid tight" id="e-cur"></div>
-    <div id="e-fwdBox">
-      <h4>Eklenecek kimyasallar</h4>
-      <div class="secs" id="e-lines"></div>
-      <div class="btns"><button class="btn sec" id="e-add">+ Kimyasal ekle</button><button class="btn ghost" id="e-water">+ Su ile seyreltme</button></div>
-    </div>
-    <div id="e-revBox" hidden>
-      <h4>İstenen değerler</h4>
-      <p class="hint" style="margin:0 0 8px">Değiştirmek istediğin özelliğin hedef değerini yaz; boş bırakılanlar hesaba girmez.</p>
-      <div class="grid tight" id="e-tgt"></div>
-    </div>
-    <details style="margin-top:14px" id="e-libBox">
-      <summary style="cursor:pointer;color:var(--muted);font-size:.9rem;font-weight:600">Etki katsayıları (her 1 ppb için)</summary>
-      <p class="hint" style="margin:8px 0">Her satır, 1 ppb (lb/bbl) kimyasalın değeri ne kadar değiştirdiğidir. Örn. XCD satırında YP 14 → 0,25 ppb XCD YP'yi yaklaşık 3,5 artırır. Kendi gözlemine göre düzelt; değişiklikler bu telefonda saklanır. "Katı" işaretli kimyasallar çözünmez, katı yüzdesine eklenir.</p>
-      <div class="tw"><table class="t" id="e-lib"></table></div>
-      <div class="btns"><button class="btn ghost" id="e-libAdd">+ Kimyasal satırı</button><button class="btn ghost" id="e-libReset">Varsayılan katsayılara dön</button></div>
-    </details>
-    <div class="formula">
-      <div>ppb = lb / hacim (bbl) · 1 ppb = 2,853 kg/m³</div>
-      <div>Yeni MW = (MW·42V + Σlb + 8,33·42·Vsu) / (42V + Σ lb/(8,33·SG) + 42·Vsu)</div>
-      <div>Soda külü: 1 ppb → Ca −1077 mg/L · Bikarbonat: 1 ppb → Ca −1359 mg/L · KCl: 1 ppb → Cl +1357 mg/L, %0,29 KCl · NaCl: 1 ppb → Cl +1731 mg/L</div>
-      <div>Filtrat: FL₂ = FL₁ · e^(Σ katsayı·ppb / FL₁) · diğerleri: değer + Σ katsayı · ppb</div>
-    </div>
-  </div>
-  <div class="readout" id="r-etki"></div>
-</section>
-
 <section class="tool" id="t-pompa" hidden>
   <div class="card">
     <h2>Pompa ve dolaşım süresi</h2>

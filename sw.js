@@ -1,5 +1,5 @@
 // Çevrimdışı önbellek. Uygulamayı güncellediğinde VERSION değerini artır.
-const VERSION = 'sondaj-v5';
+const VERSION = 'sondaj-v6';
 const FILES = ['./', './index.html', './app.js', './manifest.json', './icon-180.png', './icon-192.png', './icon-512.png',
   './xlsx.full.min.js', './pdf.min.js', './pdf.worker.min.js'];
 
